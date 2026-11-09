@@ -1,0 +1,10 @@
+# Проект создаёт XcodeGen из project.yml
+*.xcodeproj
+*.xcworkspace
+xcuserdata/
+DerivedData/
+build/
+*.ipa
+*.xcarchive
+*.p8
+.DS_Store

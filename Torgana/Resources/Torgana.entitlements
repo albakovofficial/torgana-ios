@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Push-уведомления (APNs). Здесь development — при выгрузке в TestFlight/App Store Xcode сам ставит production. -->
+	<key>aps-environment</key>
+	<string>development</string>
+	<!-- Ссылки torgana.ru открываются сразу в приложении (файл apple-app-site-association на сайте). -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:torgana.ru</string>
+		<!-- Пароли от torgana.ru из «Связки ключей» подставляются в форму входа. -->
+		<string>webcredentials:torgana.ru</string>
+	</array>
+	<!-- «Войти с Apple» — обязателен, раз в приложении есть вход через Яндекс ID и VK ID (правило 4.8). -->
+	<key>com.apple.developer.applesignin</key>
+	<array>
+		<string>Default</string>
+	</array>
+</dict>
+</plist>

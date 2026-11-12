@@ -33,6 +33,10 @@ final class AppState: ObservableObject {
         Task {
             await loadConfig()
             await refreshMe()
+            #if DEBUG
+            // Снимки экранов: запуск с -route /l/5 открывает нужный экран.
+            if let r = UserDefaults.standard.string(forKey: "route"), !r.isEmpty { Nav.shared.open(path: r) }
+            #endif
         }
         // Счётчики и «кто вошёл» — раз в 30 секунд, как у сайта.
         Task {

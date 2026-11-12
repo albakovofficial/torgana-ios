@@ -31,7 +31,11 @@ final class Router {
     let baseURL: URL
 
     private init() {
-        let raw = Bundle.main.object(forInfoDictionaryKey: "TorganaBaseURL") as? String ?? "https://torgana.ru"
+        var raw = Bundle.main.object(forInfoDictionaryKey: "TorganaBaseURL") as? String ?? "https://torgana.ru"
+        #if DEBUG
+        // Снимки экранов на GitHub Actions: запуск с -base http://127.0.0.1:8787 (ci/demo-server.js).
+        if let b = UserDefaults.standard.string(forKey: "base"), !b.isEmpty { raw = b }
+        #endif
         baseURL = URL(string: raw) ?? URL(string: "https://torgana.ru")!
     }
 

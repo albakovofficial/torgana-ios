@@ -87,10 +87,18 @@ struct CardSeller: Codable, Hashable {
     let shop: Bool?
 }
 
+/// Платное продвижение в карточке. У своих объявлений сервер присылает здесь список покупок — тогда поля пустые.
 struct Boost: Codable, Hashable {
     let xl: Bool?
     let frame: Bool?
     let tags: [String]?
+    init(from decoder: Decoder) throws {
+        let c = try? decoder.container(keyedBy: K.self)
+        xl = try? c?.decode(Bool.self, forKey: .xl)
+        frame = try? c?.decode(Bool.self, forKey: .frame)
+        tags = try? c?.decode([String].self, forKey: .tags)
+    }
+    private enum K: String, CodingKey { case xl, frame, tags }
 }
 
 /// Объявление в ленте и поиске.
@@ -189,3 +197,126 @@ struct ListingResponse: Codable {
 
 struct FavResult: Codable { let fav: Bool; let favCount: Int? }
 struct IdResult: Codable { let id: Int }
+
+// MARK: - Сообщения
+
+struct Person: Codable, Hashable {
+    let id: Int
+    let name: String
+    let avatar: String?
+    let createdAt: Double?
+    let rep: Rep?
+}
+
+struct ConvItem: Codable, Identifiable, Hashable {
+    let id: Int
+    let listingId: Int?
+    let title: String?
+    let price: Int?
+    let priceUnit: String?
+    let status: String?
+    let photo: String?
+    let other: Person?
+    let lastBody: String?
+    let unread: Int?
+    let updatedAt: Double?
+    let role: String?
+    let blocked: Bool?
+    let lastMine: Int?
+}
+
+struct ConvList: Codable { let items: [ConvItem] }
+
+struct Quote: Codable, Hashable {
+    let id: Int
+    let mine: Bool?
+    let body: String?
+    let photo: JSONValue?
+    let kind: String?
+}
+
+struct Offer: Codable, Hashable, Identifiable {
+    let id: Int
+    let price: Int
+    let listingPrice: Int?
+    let status: String          // pending, accepted, declined, withdrawn, countered
+    let bySeller: Bool?
+    let parentId: Int?
+    let createdAt: Double?
+}
+
+struct Message: Codable, Identifiable, Hashable {
+    let id: Int
+    let mine: Bool
+    let body: String?
+    let photo: String?
+    let kind: String?
+    let offerId: Int?
+    let reply: Quote?
+    let createdAt: Double?
+    let read: Bool?
+}
+
+struct ChatListing: Codable, Hashable {
+    let id: Int
+    let title: String
+    let price: Int?
+    let priceUnit: String?
+    let status: String?
+    let bargain: Bool?
+    let photo: String?
+    let city: String?
+}
+
+struct ChatData: Codable {
+    struct Conv: Codable { let id: Int; let role: String? }
+    let conversation: Conv?
+    let listing: ChatListing?
+    let other: Person?
+    let block: String?          // "me" — я заблокировал, "them" — меня
+    let offers: [Offer]?
+    let readUpTo: Int?
+    let typing: Bool?
+    let messages: [Message]
+}
+
+struct SentMessage: Codable { let message: Message }
+struct OfferResult: Codable { let offers: [Offer]? }
+/// Переписка с поддержкой — те же сообщения, что в обычном чате (без ответов и предложений цены).
+struct SupportData: Codable { let messages: [Message] }
+struct UploadResult: Codable { let file: String; let url: String? }
+
+// MARK: - Профиль
+
+/// Своё объявление в «Моих объявлениях» — карточка плюс просмотры, причина отклонения и т. п.
+struct MyListing: Codable, Identifiable, Hashable {
+    let id: Int
+    let title: String
+    let price: Int?
+    let priceUnit: String?
+    let city: String?
+    let photo: String?
+    let status: String?          // active, pending, rejected, scheduled, sold, archived
+    let createdAt: Double?
+    let views: Int?
+    let favCount: Int?
+    let rejectReason: String?
+    let expiresAt: Double?
+}
+
+struct MyListings: Codable { let items: [MyListing] }
+
+struct Notice: Codable, Identifiable, Hashable {
+    let id: Int
+    let kind: String?
+    let title: String
+    let body: String?
+    let url: String?
+    let icon: String?
+    let tone: String?
+    let at: Double?
+    let read: Bool?
+    let photo: String?
+}
+
+struct NoticeList: Codable { let items: [Notice]; let unread: Int? }

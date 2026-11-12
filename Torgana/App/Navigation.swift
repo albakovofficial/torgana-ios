@@ -5,6 +5,10 @@ import SwiftUI
 enum Route: Hashable {
     case listing(Int)
     case search(SearchQuery)
+    case chat(Int)
+    case support
+    case myListings
+    case notices
     case web(String)
 
     /// /l/123-velosiped → .listing(123); /search?q=… и /c/… → поиск; остальное — страница сайта.
@@ -13,6 +17,8 @@ enum Route: Hashable {
         let path = comps.path.isEmpty ? "/" : comps.path
         let items = Dictionary((comps.queryItems ?? []).compactMap { q in q.value.map { (q.name, $0) } }, uniquingKeysWith: { a, _ in a })
         if let m = path.firstMatch(of: #/^\/l\/(\d+)/#), let id = Int(m.1) { return .listing(id) }
+        if path == "/messages/support" { return .support }
+        if let m = path.firstMatch(of: #/^\/messages\/(\d+)/#), let id = Int(m.1) { return .chat(id) }
         if path == "/search" { return .search(SearchQuery(params: items)) }
         if let m = path.firstMatch(of: #/^\/c\/([a-z]+)(?:\/([a-z0-9_-]+))?/#) {
             var q = SearchQuery(params: items)
@@ -55,17 +61,25 @@ final class Nav: ObservableObject {
         case "/": tab = .home; paths[.home] = NavigationPath(); return
         case "/favorites": tab = .favorites; paths[.favorites] = NavigationPath(); return
         case "/new": tab = .post; return
-        case "/profile": tab = .profile; return
+        case "/profile": tab = .profile; paths[.profile] = NavigationPath(); return
+        case "/profile/listings": tab = .profile; paths[.profile] = NavigationPath([Route.myListings]); return
         default: break
         }
-        if clean.hasPrefix("/messages") { tab = .messages; WebTabs.shared.go(.messages, clean); return }
-        if clean.hasPrefix("/profile") { tab = .profile; WebTabs.shared.go(.profile, clean); return }
+        if clean.hasPrefix("/messages") {
+            // Переписка — во вкладке «Сообщения», поверх списка.
+            tab = .messages
+            var p = NavigationPath()
+            if let r = Route.from(path: clean) { p.append(r) }
+            paths[.messages] = p
+            return
+        }
+        if clean.hasPrefix("/profile") { tab = .profile; paths[.profile] = NavigationPath([Route.web(clean)]); return }
         push(Route.from(path: clean) ?? .web(clean))
     }
 
     func reselect(_ t: Tab) {
         if tab == t {
-            if [.post, .messages, .profile].contains(t) { WebTabs.shared.reset(t) } else { paths[t] = NavigationPath() }
+            if t == .post { WebTabs.shared.reset(t) } else { paths[t] = NavigationPath() }
         } else { tab = t }
         Haptics.play("selection")
     }
@@ -82,8 +96,8 @@ struct MainView: View {
                 stack(.home) { HomeView() }
                 stack(.favorites) { FavoritesView() }
                 WebTabHost(tab: .post).opacity(nav.tab == .post ? 1 : 0).allowsHitTesting(nav.tab == .post)
-                WebTabHost(tab: .messages).opacity(nav.tab == .messages ? 1 : 0).allowsHitTesting(nav.tab == .messages)
-                WebTabHost(tab: .profile).opacity(nav.tab == .profile ? 1 : 0).allowsHitTesting(nav.tab == .profile)
+                stack(.messages) { MessagesView() }
+                stack(.profile) { ProfileView() }
             }
             if nav.barVisible {
                 TabBar()
@@ -93,7 +107,7 @@ struct MainView: View {
         .animation(.easeOut(duration: 0.2), value: nav.barVisible)
         .modifier(ToastHost())
         .sheet(isPresented: $app.needLogin) {
-            NavigationStack { WebScreen(path: "/login?next=/profile", title: "Вход", closeOnLogin: true) }
+            NavigationStack { LoginView() }
         }
     }
 
@@ -114,6 +128,10 @@ struct RouteView: View {
         switch route {
         case .listing(let id): ListingView(id: id)
         case .search(let q): SearchView(query: q)
+        case .chat(let id): ChatView(kind: .conv(id))
+        case .support: ChatView(kind: .support)
+        case .myListings: MyListingsView()
+        case .notices: NoticesView()
         case .web(let path): WebScreen(path: path)
         }
     }

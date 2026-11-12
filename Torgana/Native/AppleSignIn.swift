@@ -27,6 +27,38 @@ final class AppleSignIn: NSObject {
         controller.performRequests()
     }
 
+    // MARK: родной экран входа (SignInWithAppleButton)
+    // Одноразовый nonce выдаёт сервер (POST /api/auth/apple/nonce) — берём заранее: кнопка Apple не ждёт сети.
+    private var serverNonce: String?
+
+    func prefetchNonce() async {
+        if let r: JSONValue = try? await API.shared.post("/api/auth/apple/nonce", ["next": "/profile"]), let n = r["nonce"]?.string {
+            serverNonce = n
+        }
+    }
+
+    func prepare(_ request: ASAuthorizationAppleIDRequest) {
+        let raw = serverNonce ?? AppleSignIn.randomNonce()
+        rawNonce = raw
+        request.requestedScopes = [.fullName, .email]
+        request.nonce = AppleSignIn.sha256(raw)
+    }
+
+    /// Что отправить на сервер (POST /api/auth/apple). nonce одноразовый — следующий берём сразу.
+    func payload(_ authorization: ASAuthorization) -> [String: JSONValue]? {
+        guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
+              let tokenData = credential.identityToken,
+              let token = String(data: tokenData, encoding: .utf8) else { return nil }
+        var p: [String: JSONValue] = ["identityToken": .string(token), "nonce": .string(rawNonce ?? "")]
+        let name = [credential.fullName?.givenName, credential.fullName?.familyName].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ")
+        if !name.isEmpty { p["name"] = .string(name) }
+        if let email = credential.email { p["email"] = .string(email) }
+        rawNonce = nil
+        serverNonce = nil
+        Task { await prefetchNonce() }
+        return p
+    }
+
     static func sha256(_ text: String) -> String {
         SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined()
     }

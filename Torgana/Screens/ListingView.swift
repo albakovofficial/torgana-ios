@@ -254,7 +254,7 @@ struct ListingView: View {
         defer { writing = false }
         do {
             let r: IdResult = try await API.shared.post("/api/conversations", ["listingId": listingId])
-            nav.push(.web("/messages/\(r.id)"))
+            nav.push(.chat(r.id))
         } catch {
             app.show((error as? APIError)?.message ?? "Не получилось", bad: true)
         }

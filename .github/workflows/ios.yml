@@ -122,6 +122,8 @@ jobs:
             MARKETING_VERSION="$VERSION" \
             CURRENT_PROJECT_VERSION="$BUILD" 2>&1 | tee archive.log | grep -E "error:|ARCHIVE (SUCCEEDED|FAILED)" || true
           grep -q "ARCHIVE SUCCEEDED" archive.log
+          APPDIR="$RUNNER_TEMP/Torgana.xcarchive/Products/Applications/Torgana.app"
+          plutil -extract UIDeviceFamily json -o - "$APPDIR/Info.plist" | grep -qx '\[1\]' || { echo "::error::Сборка не только для iPhone (UIDeviceFamily)"; plutil -p "$APPDIR/Info.plist" | grep -A3 UIDeviceFamily; exit 1; }
           echo "Entitlements архива:"; codesign -d --entitlements - --xml "$RUNNER_TEMP/Torgana.xcarchive/Products/Applications/Torgana.app" | plutil -p - || true
 
       - name: Подписать для App Store (сертификат и профиль — через ключ API)

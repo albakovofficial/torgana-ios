@@ -23,6 +23,8 @@ concurrency:
 jobs:
   build:
     name: Сборка (симулятор)
+    # Для выгрузки в TestFlight отдельная проверочная сборка не нужна: архив и так всё собирает (и Mac на GitHub бывает в дефиците).
+    if: ${{ !startsWith(github.ref, 'refs/tags/') && !(github.event_name == 'workflow_dispatch' && inputs.testflight) }}
     runs-on: macos-26
     timeout-minutes: 30
     steps:
@@ -57,7 +59,6 @@ jobs:
 
   testflight:
     name: TestFlight
-    needs: build
     if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.testflight)
     runs-on: macos-26
     timeout-minutes: 45

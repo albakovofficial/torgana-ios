@@ -1,148 +1,196 @@
 import SwiftUI
 import WebKit
 
-// Один WKWebView на всё приложение: сайт, мост с сайтом (window.TorganaApp) и правила переходов.
-final class WebController: NSObject, ObservableObject {
+// Страницы сайта внутри приложения — для разделов, которые ещё не переписаны на Swift.
+// WebController — общее: настройки WKWebView, мост с сайтом (window.TorganaApp), правила переходов.
+// Каждый экран сайта — свой WKWebView (WebPage); куки общие (WKWebsiteDataStore.default), поэтому вход один на всё приложение.
+final class WebController: NSObject {
     static let shared = WebController()
 
-    let webView: WKWebView
-    @Published var firstLoadDone = false
-    @Published var failed = false
-
-    private var started = false
-    private var lastURL: URL?
+    /// Страница, которая последней писала приложению, — ей уходят ответы (push.status, auth.apple, share.result).
+    weak var current: WKWebView?
 
     static var appVersion: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
     }
 
     // Вход через Яндекс ID и VK ID идёт внутри приложения — иначе вход сохранится в Safari, а не здесь.
-    private static let authHosts = ["oauth.yandex.ru", "passport.yandex.ru", "id.vk.com", "oauth.vk.com", "login.vk.com", "vk.com", "id.vk.ru", "oauth.vk.ru", "vk.ru"]
+    static let authHosts = ["oauth.yandex.ru", "passport.yandex.ru", "id.vk.com", "oauth.vk.com", "login.vk.com", "vk.com", "id.vk.ru", "oauth.vk.ru", "vk.ru"]
 
-    private override init() {
+    private lazy var handler = WeakScriptHandler(self)
+
+    func makeWebView(embedded: Bool) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.allowsInlineMediaPlayback = true
         config.mediaTypesRequiringUserActionForPlayback = .all
         config.websiteDataStore = .default()
-        // Сайт узнаёт приложение по этой метке: прячет то, что в приложении не нужно (установка на экран, web-push).
+        // Сайт узнаёт приложение по этой метке: прячет оплату, установку на экран, web-push.
         config.applicationNameForUserAgent = "TorganaApp/\(WebController.appVersion) (iOS)"
         let content = WKUserContentController()
+        content.addUserScript(WKUserScript(source: WebController.bootScript(embedded: embedded), injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        content.add(handler, name: "torgana")
         config.userContentController = content
-        webView = WKWebView(frame: .zero, configuration: config)
-        super.init()
-
-        content.addUserScript(WKUserScript(source: WebController.bootScript, injectionTime: .atDocumentStart, forMainFrameOnly: true))
-        content.add(WeakScriptHandler(self), name: "torgana")
-
-        webView.navigationDelegate = self
-        webView.uiDelegate = self
-        webView.allowsBackForwardNavigationGestures = true
-        webView.allowsLinkPreview = false
-        webView.isOpaque = false
-        webView.backgroundColor = .white
-        webView.scrollView.contentInsetAdjustmentBehavior = .never
-        webView.scrollView.keyboardDismissMode = .interactive
-        if #available(iOS 16.4, *) { webView.isInspectable = isDebug }
-
-        // Обновление жестом вниз — у сайта (бережёт недописанное сообщение и прокрутку переписки); своё не добавляем, иначе два значка.
-    }
-
-    private var isDebug: Bool {
+        let web = WKWebView(frame: .zero, configuration: config)
+        web.allowsBackForwardNavigationGestures = false
+        web.allowsLinkPreview = false
+        web.isOpaque = false
+        web.backgroundColor = UIColor(T.bg)
+        web.scrollView.backgroundColor = UIColor(T.bg)
+        web.scrollView.contentInsetAdjustmentBehavior = .never
+        web.scrollView.keyboardDismissMode = .interactive
         #if DEBUG
-        return true
-        #else
-        return false
+        web.isInspectable = true
         #endif
+        return web
     }
 
     // window.TorganaApp — признак приложения и отправка сообщений в него.
-    private static var bootScript: String {
-        """
-        (function () {
-          window.TorganaApp = {
-            platform: 'ios',
-            version: '\(appVersion)',
-            post: function (msg) { try { window.webkit.messageHandlers.torgana.postMessage(msg); } catch (e) {} }
-          };
-          var mark = function () { document.documentElement.classList.add('in-app', 'in-app-ios'); };
-          if (document.documentElement) mark(); else document.addEventListener('DOMContentLoaded', mark);
-        })();
-        """
-    }
-
-    func start(_ url: URL) {
-        guard !started else { return }
-        started = true
-        load(url)
-    }
-
-    // Ссылка из push/письма может прийти раньше, чем открылась главная, — тогда главную уже не грузим.
-    func load(_ url: URL) {
-        started = true
-        lastURL = url
-        webView.load(URLRequest(url: url))
-    }
-
-    func retry() {
-        failed = false
-        if webView.url != nil { webView.reload() } else { load(lastURL ?? Router.shared.baseURL) }
+    // embedded: страница внутри родного приложения — шапку, подвал и нижнее меню сайта прячем (есть свои),
+    // а ссылки на уже родные экраны (объявление, поиск, главная, избранное) открываем в приложении.
+    private static func bootScript(embedded: Bool) -> String {
+        let app = "window.TorganaApp = { platform: 'ios', version: '" + appVersion + "', native: " + (embedded ? "true" : "false") + ", "
+            + "post: function (msg) { try { window.webkit.messageHandlers.torgana.postMessage(msg); } catch (e) {} } };"
+        let classes = embedded ? "'in-app', 'in-app-ios', 'in-app-native'" : "'in-app', 'in-app-ios'"
+        let css = "#header, #footer, #bottom-nav, .cookie-bar { display: none !important; } "
+            + "body { padding-top: env(safe-area-inset-top, 0px); } #app { min-height: 0 !important; padding-bottom: 24px; }"
+        let style = embedded
+            ? "var st = document.createElement('style'); st.textContent = '" + css + "'; (document.head || document.documentElement).appendChild(st);"
+            : ""
+        let mark = "var mark = function () { document.documentElement.classList.add(" + classes + "); " + style + " };"
+            + "if (document.documentElement) mark(); else document.addEventListener('DOMContentLoaded', mark);"
+        let links = embedded ? #"""
+          var NATIVE = /^\/(?:$|l\/\d+|search$|c\/|favorites$)/;
+          window.addEventListener('click', function (e) {
+            var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+            if (!a || a.target === '_blank' || a.hasAttribute('download')) return;
+            var u; try { u = new URL(a.href, location.href); } catch (x) { return; }
+            if (u.origin !== location.origin || !NATIVE.test(u.pathname)) return;
+            e.preventDefault(); e.stopImmediatePropagation();
+            window.TorganaApp.post({ type: 'native.open', path: u.pathname + u.search });
+          }, true);
+          """# : ""
+        return "(function () { " + app + mark + links + " })();"
     }
 
     // Сообщение сайту: window.addEventListener('torgana-native', e => e.detail).
     func send(_ payload: [String: Any]) {
         DispatchQueue.main.async {
-            guard JSONSerialization.isValidJSONObject(payload),
+            guard let web = self.current,
+                  JSONSerialization.isValidJSONObject(payload),
                   let data = try? JSONSerialization.data(withJSONObject: payload),
                   let json = String(data: data, encoding: .utf8) else { return }
-            self.webView.evaluateJavaScript("window.dispatchEvent(new CustomEvent('torgana-native', { detail: \(json) }));", completionHandler: nil)
+            web.evaluateJavaScript("window.dispatchEvent(new CustomEvent('torgana-native', { detail: \(json) }));", completionHandler: nil)
         }
     }
 
-    fileprivate func openOutside(_ url: URL) {
+    static func openOutside(_ url: URL) {
         DispatchQueue.main.async { UIApplication.shared.open(url) }
     }
 
-    fileprivate func isAuthHost(_ url: URL) -> Bool {
+    static func isAuthHost(_ url: URL) -> Bool {
         guard let host = url.host?.lowercased() else { return false }
-        return WebController.authHosts.contains { host == $0 || host.hasSuffix("." + $0) }
+        return authHosts.contains { host == $0 || host.hasSuffix("." + $0) }
+    }
+
+    /// Куда можно уйти со страницы: свои страницы и вход Яндекс/VK — внутри, остальное — системой или в Safari.
+    static func policy(for action: WKNavigationAction) -> WKNavigationActionPolicy {
+        guard let url = action.request.url else { return .cancel }
+        let scheme = url.scheme?.lowercased() ?? ""
+        if !["http", "https", "about", "blob", "data"].contains(scheme) { openOutside(url); return .cancel }
+        let mainFrame = action.targetFrame?.isMainFrame ?? true
+        if !mainFrame || scheme == "about" || scheme == "blob" || scheme == "data" { return .allow }
+        if Router.shared.isInternal(url) || isAuthHost(url) { return .allow }
+        openOutside(url)
+        return .cancel
     }
 }
 
-// MARK: - Переходы
-extension WebController: WKNavigationDelegate {
+// MARK: - Сообщения от сайта
+extension WebController: WKScriptMessageHandler {
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard let body = message.body as? [String: Any], let type = body["type"] as? String else { return }
+        // Только со своих страниц: чужая рамка или страница входа не может звать приложение.
+        guard let origin = message.frameInfo.request.url, Router.shared.isInternal(origin) else { return }
+        current = message.webView
+        Bridge.handle(type: type, body: body)
+    }
+}
+
+// WKUserContentController держит обработчик сильно — прослойка, чтобы не было цикла.
+final class WeakScriptHandler: NSObject, WKScriptMessageHandler {
+    private weak var target: WKScriptMessageHandler?
+    init(_ target: WKScriptMessageHandler) { self.target = target }
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        target?.userContentController(controller, didReceive: message)
+    }
+}
+
+// MARK: - Одна страница сайта
+final class WebPage: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate {
+    let web: WKWebView
+    @Published var loading = true
+    @Published var failed = false
+    @Published var title = ""
+    /// Адрес открытой страницы (сайт меняет его без перезагрузки — следим через KVO).
+    @Published var path = ""
+    private var lastURL: URL?
+    private var urlWatch: NSKeyValueObservation?
+
+    init(path: String, embedded: Bool = true) {
+        web = WebController.shared.makeWebView(embedded: embedded)
+        super.init()
+        web.navigationDelegate = self
+        web.uiDelegate = self
+        urlWatch = web.observe(\.url, options: [.new]) { [weak self] w, _ in
+            let p = w.url.map { $0.path + ($0.query.map { "?" + $0 } ?? "") } ?? ""
+            DispatchQueue.main.async { if self?.path != p { self?.path = p } }
+        }
+        load(path: path)
+    }
+
+    func load(path: String) {
+        let url = URL(string: path, relativeTo: Router.shared.baseURL)?.absoluteURL ?? Router.shared.baseURL
+        lastURL = url
+        failed = false
+        web.load(URLRequest(url: url))
+    }
+
+    /// Переход внутри уже открытого сайта — без перезагрузки (сайт слушает popstate).
+    func go(path: String) {
+        guard web.url != nil, !failed else { load(path: path); return }
+        let js = "history.pushState(null, '', \(jsString(path))); window.dispatchEvent(new PopStateEvent('popstate'));"
+        web.evaluateJavaScript(js, completionHandler: nil)
+    }
+
+    func retry() {
+        failed = false
+        if web.url != nil { web.reload() } else if let u = lastURL { web.load(URLRequest(url: u)) }
+    }
+
+    private func jsString(_ s: String) -> String {
+        let data = (try? JSONSerialization.data(withJSONObject: [s])) ?? Data("[\"/\"]".utf8)
+        let arr = String(data: data, encoding: .utf8) ?? "[\"/\"]"
+        return String(arr.dropFirst().dropLast())
+    }
+
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        guard let url = navigationAction.request.url else { return decisionHandler(.cancel) }
-        let scheme = url.scheme?.lowercased() ?? ""
-        // Телефон, почта, карты, магазины приложений — системой.
-        if !["http", "https", "about", "blob", "data"].contains(scheme) {
-            openOutside(url)
-            return decisionHandler(.cancel)
-        }
-        // Встроенные рамки (карта, видео) — как есть; правила только для главной страницы.
-        let mainFrame = navigationAction.targetFrame?.isMainFrame ?? true
-        if !mainFrame || scheme == "about" || scheme == "blob" || scheme == "data" { return decisionHandler(.allow) }
-        if Router.shared.isInternal(url) || isAuthHost(url) { return decisionHandler(.allow) }
-        // Чужие сайты — в Safari, чтобы не уводить человека из Торганы.
-        openOutside(url)
-        decisionHandler(.cancel)
+        decisionHandler(WebController.policy(for: navigationAction))
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        loading = false
         failed = false
-        if !firstLoadDone { firstLoadDone = true }
+        title = webView.title ?? ""
         PushManager.shared.resendToken()   // сайт загрузился — отдаём ему адрес устройства для push
+        CookieSync.shared.pullFromWeb()     // вошли или вышли на странице сайта — родные экраны узнают сразу
     }
 
-    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        handle(error)
-    }
-
-    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-        handle(error)
-    }
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { handle(error) }
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { handle(error) }
 
     private func handle(_ error: Error) {
+        loading = false
         let e = error as NSError
         if e.domain == NSURLErrorDomain && e.code == NSURLErrorCancelled { return }
         if e.domain == "WebKitErrorDomain" && e.code == 102 { return } // переход отдан системе
@@ -151,18 +199,11 @@ extension WebController: WKNavigationDelegate {
         if e.domain == NSURLErrorDomain && offline.contains(e.code) { failed = true }
     }
 
-    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-        webView.reload()
-    }
-}
-
-// MARK: - Окна и диалоги
-extension WebController: WKUIDelegate {
     // target="_blank": свои страницы — здесь же, чужие — в Safari.
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                  for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         if let url = navigationAction.request.url {
-            if Router.shared.isInternal(url) || isAuthHost(url) { webView.load(navigationAction.request) } else { openOutside(url) }
+            if Router.shared.isInternal(url) || WebController.isAuthHost(url) { webView.load(navigationAction.request) } else { WebController.openOutside(url) }
         }
         return nil
     }
@@ -185,30 +226,156 @@ extension WebController: WKUIDelegate {
     }
 }
 
-// MARK: - Сообщения от сайта
-extension WebController: WKScriptMessageHandler {
-    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard let body = message.body as? [String: Any], let type = body["type"] as? String else { return }
-        // Только со своих страниц: чужая рамка или страница входа не может звать приложение.
-        guard let origin = message.frameInfo.request.url, Router.shared.isInternal(origin) else { return }
-        Bridge.handle(type: type, body: body)
+// Вкладки, которые пока — сайт: «Подать», «Сообщения», «Профиль». Страница создаётся при первом открытии вкладки.
+@MainActor
+final class WebTabs: ObservableObject {
+    static let shared = WebTabs()
+    @Published private(set) var pages: [Tab: WebPage] = [:]
+
+    static func home(_ tab: Tab) -> String {
+        switch tab {
+        case .post: return "/new"
+        case .messages: return "/messages"
+        default: return "/profile"
+        }
+    }
+
+    func page(_ tab: Tab) -> WebPage {
+        if let p = pages[tab] { return p }
+        let p = WebPage(path: WebTabs.home(tab))
+        pages[tab] = p
+        return p
+    }
+
+    func go(_ tab: Tab, _ path: String) { page(tab).go(path: path) }
+
+    /// Повторное нажатие на вкладку — к её началу.
+    func reset(_ tab: Tab) { pages[tab]?.go(path: WebTabs.home(tab)) }
+
+    /// Вошли или вышли — страницы сайта перечитываем.
+    func reloadAll() { pages.values.forEach { $0.web.reload() } }
+}
+
+struct WebHostView: UIViewRepresentable {
+    let web: WKWebView
+    func makeUIView(context: Context) -> UIView {
+        let box = UIView()
+        box.backgroundColor = .clear
+        attach(web, to: box)
+        return box
+    }
+    func updateUIView(_ uiView: UIView, context: Context) {
+        if web.superview !== uiView { attach(web, to: uiView) }
+    }
+    private func attach(_ web: WKWebView, to box: UIView) {
+        web.removeFromSuperview()
+        web.translatesAutoresizingMaskIntoConstraints = false
+        box.addSubview(web)
+        NSLayoutConstraint.activate([
+            web.leadingAnchor.constraint(equalTo: box.leadingAnchor), web.trailingAnchor.constraint(equalTo: box.trailingAnchor),
+            web.topAnchor.constraint(equalTo: box.topAnchor), web.bottomAnchor.constraint(equalTo: box.bottomAnchor)
+        ])
     }
 }
 
-// WKUserContentController держит обработчик сильно — прослойка, чтобы не было цикла.
-final class WeakScriptHandler: NSObject, WKScriptMessageHandler {
-    private weak var target: WKScriptMessageHandler?
-    init(_ target: WKScriptMessageHandler) { self.target = target }
-    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
-        target?.userContentController(controller, didReceive: message)
+struct WebPageView: View {
+    @ObservedObject var page: WebPage
+    var body: some View {
+        ZStack {
+            T.bg.ignoresSafeArea()
+            WebHostView(web: page.web).ignoresSafeArea()
+            if page.loading { ProgressView().tint(T.accent) }
+            if page.failed { OfflineView { page.retry() } }
+        }
     }
 }
 
-// Не «WebView»: в iOS 26 у WebKit есть свой SwiftUI-тип WebView.
-struct TorganaWebView: UIViewRepresentable {
-    let controller: WebController
-    func makeUIView(context: Context) -> WKWebView { controller.webView }
-    func updateUIView(_ uiView: WKWebView, context: Context) {}
+struct WebTabHost: View {
+    let tab: Tab
+    @EnvironmentObject private var nav: Nav
+    @ObservedObject private var tabs = WebTabs.shared
+
+    var body: some View {
+        Group {
+            if let page = tabs.pages[tab] {
+                WebTabPage(page: page, tab: tab)
+            } else {
+                T.bg.ignoresSafeArea()
+            }
+        }
+        .onAppear { if nav.tab == tab { _ = tabs.page(tab) } }
+        .onChange(of: nav.tab) { _, t in if t == tab { _ = tabs.page(tab) } }
+    }
+}
+
+// Страница во вкладке — над нижним меню, чтобы поле ввода и кнопки сайта не прятались под ним.
+// Открыта переписка — нижнее меню прячем (как сайт), назад к списку — стрелкой в шапке чата.
+struct WebTabPage: View {
+    @ObservedObject var page: WebPage
+    let tab: Tab
+    @EnvironmentObject private var nav: Nav
+
+    private var chatOpen: Bool { tab == .messages && page.path.range(of: "^/messages/[^/?]+", options: .regularExpression) != nil }
+
+    var body: some View {
+        WebPageView(page: page)
+            .padding(.bottom, chatOpen ? 0 : 84)
+            .background(T.bg.ignoresSafeArea())
+            .onChange(of: chatOpen) { _, open in if nav.tab == tab { nav.webBarHidden = open } }
+            .onChange(of: nav.tab) { _, t in if t == tab { nav.webBarHidden = chatOpen } else if nav.webBarHidden { nav.webBarHidden = false } }
+    }
+}
+
+// Страница сайта, открытая из родного экрана (чат, продавец, документы…) — с родной кнопкой «Назад».
+struct WebScreen: View {
+    let path: String
+    var title: String = ""
+    var closeOnLogin = false
+    @StateObject private var page: WebPage
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var app: AppState
+
+    init(path: String, title: String = "", closeOnLogin: Bool = false) {
+        self.path = path
+        self.title = title
+        self.closeOnLogin = closeOnLogin
+        _page = StateObject(wrappedValue: WebPage(path: path))
+    }
+
+    var body: some View {
+        WebPageView(page: page)
+            .hidesTabBar()
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                if closeOnLogin {
+                    ToolbarItem(placement: .cancellationAction) { Button("Закрыть") { dismiss() } }
+                }
+            }
+            .onChange(of: app.me?.id) { _, id in if closeOnLogin && id != nil { dismiss() } }
+    }
+}
+
+// Нет связи: понятный экран и кнопка «Повторить» вместо белой страницы.
+struct OfflineView: View {
+    let retry: () -> Void
+
+    var body: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "wifi.slash")
+                .font(.system(size: 40, weight: .semibold))
+                .foregroundStyle(T.accent)
+                .frame(width: 88, height: 88)
+                .background(Circle().fill(T.accentSoft))
+            Text("Нет соединения").font(.on(22, .bold)).foregroundStyle(T.text)
+            Text("Проверьте интернет и попробуйте ещё раз.")
+                .font(.on(16)).foregroundStyle(T.muted).multilineTextAlignment(.center)
+            Button("Повторить", action: retry).buttonStyle(TButton(kind: .dark, full: false)).padding(.top, 8)
+        }
+        .padding(32)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(T.bg.ignoresSafeArea())
+    }
 }
 
 extension UIApplication {

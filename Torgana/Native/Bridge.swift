@@ -19,6 +19,9 @@ enum Bridge {
             AppleSignIn.shared.start(nonce: body["nonce"] as? String)
         case "badge":
             setBadge((body["count"] as? NSNumber)?.intValue ?? 0)
+        case "native.open":
+            // Ссылка на странице сайта ведёт в раздел, который уже родной, — открываем его в приложении.
+            if let path = body["path"] as? String { Task { @MainActor in Nav.shared.open(path: path) } }
         case "open.external":
             if let raw = body["url"] as? String, let url = URL(string: raw),
                ["http", "https", "tel", "mailto"].contains(url.scheme?.lowercased() ?? "") {

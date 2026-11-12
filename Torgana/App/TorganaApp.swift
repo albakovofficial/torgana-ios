@@ -1,30 +1,34 @@
 import SwiftUI
 
-// Торгана для iPhone: сайт torgana.ru внутри приложения + то, чего сайт в браузере не умеет:
-// push-уведомления Apple, «Войти с Apple», системное «Поделиться», виброотклик, ссылки torgana.ru сразу в приложении.
+// Торгана для iPhone — родное приложение на SwiftUI. Данные — с сервера torgana.ru (те же /api/…, что у сайта).
+// Разделы, которые ещё не переписаны на Swift, открываются страницами сайта внутри приложения (Web/WebController.swift).
 @main
 struct TorganaApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @StateObject private var router = Router.shared
+    @StateObject private var app = AppState.shared
+    @StateObject private var nav = Nav.shared
 
     var body: some Scene {
         WindowGroup {
-            RootView()
-                .environmentObject(router)
-                .onOpenURL { url in router.open(url) }
+            MainView()
+                .environmentObject(app)
+                .environmentObject(nav)
+                .font(.on(16))
+                .tint(T.accent)
+                .onAppear { app.start() }
+                .onOpenURL { Router.shared.open($0) }
                 .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
-                    if let url = activity.webpageURL { router.open(url) }
+                    if let url = activity.webpageURL { Router.shared.open(url) }
                 }
         }
     }
 }
 
 // Куда перейти: ссылка torgana.ru (из письма, мессенджера), нажатие на push, адрес torgana://…
-final class Router: ObservableObject {
+final class Router {
     static let shared = Router()
 
     let baseURL: URL
-    @Published var pendingURL: URL?
 
     private init() {
         let raw = Bundle.main.object(forInfoDictionaryKey: "TorganaBaseURL") as? String ?? "https://torgana.ru"
@@ -33,17 +37,16 @@ final class Router: ObservableObject {
 
     func open(_ url: URL) {
         if url.scheme == "torgana" {
-            // torgana://l/123 → https://torgana.ru/l/123
+            // torgana://l/123 → /l/123
             let path = "/" + [url.host, url.path].compactMap { $0 }.joined().trimmingCharacters(in: CharacterSet(charactersIn: "/"))
             open(path: path + (url.query.map { "?" + $0 } ?? ""))
         } else if isInternal(url) {
-            pendingURL = url
+            open(path: url.path + (url.query.map { "?" + $0 } ?? ""))
         }
     }
 
     func open(path: String) {
-        guard let url = URL(string: path, relativeTo: baseURL)?.absoluteURL, isInternal(url) else { return }
-        pendingURL = url
+        Task { @MainActor in Nav.shared.open(path: path) }
     }
 
     func isInternal(_ url: URL) -> Bool {

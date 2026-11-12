@@ -18,8 +18,8 @@ on:
       runner:
         description: 'Mac на GitHub (если macos-26 долго нет — попробуйте macos-15 или macos-15-intel, там тоже есть Xcode 26)'
         type: choice
-        options: [macos-26, macos-15, macos-15-intel]
-        default: macos-26
+        options: [macos-15-intel, macos-15, macos-26]
+        default: macos-15-intel
 
 concurrency:
   group: ios-${{ github.ref }}
@@ -27,11 +27,13 @@ concurrency:
 
 jobs:
   build:
-    name: Сборка (симулятор)
+    name: Сборка (симулятор) и снимки экранов
     # Для выгрузки в TestFlight отдельная проверочная сборка не нужна: архив и так всё собирает (и Mac на GitHub бывает в дефиците).
     if: ${{ !startsWith(github.ref, 'refs/tags/') && !(github.event_name == 'workflow_dispatch' && inputs.testflight) }}
-    runs-on: ${{ inputs.runner || 'macos-26' }}
-    timeout-minutes: 30
+    runs-on: ${{ inputs.runner || 'macos-15-intel' }}
+    timeout-minutes: 40
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -46,26 +48,58 @@ jobs:
           brew install xcodegen
           xcodegen generate
 
+      - name: Симулятор iPhone
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; a=[x for k,v in d.items() if 'iOS' in k for x in v if x['name'].startswith('iPhone')]; c=[x for x in a if 'Pro' in x['name'] and 'Max' not in x['name']] or a; print(c[-1]['udid'])")
+          echo "UDID=$UDID" >> "$GITHUB_ENV"
+          xcrun simctl list devices | grep "$UDID"
+
       - name: Собрать
         run: |
           set -o pipefail
           xcodebuild build \
             -project Torgana.xcodeproj -scheme Torgana -configuration Debug \
-            -destination 'generic/platform=iOS Simulator' \
-            CODE_SIGNING_ALLOWED=NO 2>&1 | tee build.log | grep -E "error:|warning:|BUILD (SUCCEEDED|FAILED)" || true
+            -destination "platform=iOS Simulator,id=$UDID" -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee build.log | grep -E "error:|BUILD (SUCCEEDED|FAILED)" || true
           grep -q "BUILD SUCCEEDED" build.log
 
-      - name: Лог сборки
+      - name: Ошибки сборки
         if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-log
-          path: build.log
+        run: grep -E "error:" build.log | sort -u | head -80 || true
+
+      - name: Снимки экранов (светлая и тёмная тема)
+        run: |
+          APP=$(ls -d build/Build/Products/Debug-iphonesimulator/*.app | head -1)
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl status_bar "$UDID" override --time 9:41 --batteryState charged --batteryLevel 100 --cellularBars 4 || true
+          xcrun simctl install "$UDID" "$APP"
+          LID=$(curl -s "https://torgana.ru/api/listings?limit=1" | python3 -c "import json,sys; i=json.load(sys.stdin).get('items') or [{}]; print(i[0].get('id',''))" || true)
+          mkdir -p shots
+          shot() { sleep "$2"; xcrun simctl io "$UDID" screenshot "shots/$1.png"; }
+          for mode in light dark; do
+            xcrun simctl ui "$UDID" appearance $mode
+            xcrun simctl terminate "$UDID" ru.torgana.app || true
+            xcrun simctl launch "$UDID" ru.torgana.app
+            shot "$mode-1-home" 15
+            if [ -n "$LID" ]; then xcrun simctl openurl "$UDID" "torgana://l/$LID"; shot "$mode-2-listing" 8; fi
+            xcrun simctl openurl "$UDID" "torgana://search?q=%D0%B0"; shot "$mode-3-search" 8
+            xcrun simctl openurl "$UDID" "torgana://favorites"; shot "$mode-4-favorites" 5
+            xcrun simctl openurl "$UDID" "torgana://profile"; shot "$mode-5-profile" 10
+          done
+          ls -la shots
+
+      - name: Снимки — в ветку shots
+        run: |
+          cd shots
+          git init -q && git checkout -q -b shots
+          git add . && git -c user.name=ci -c user.email=ci@torgana.ru commit -qm "снимки ${{ github.sha }}"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" shots
 
   testflight:
     name: TestFlight
     if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.testflight)
-    runs-on: ${{ inputs.runner || 'macos-26' }}
+    runs-on: ${{ inputs.runner || 'macos-15-intel' }}
     timeout-minutes: 45
     env:
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}

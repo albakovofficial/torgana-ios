@@ -50,9 +50,24 @@
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 	</array>
-	<key>UIStatusBarStyle</key>
-	<string>UIStatusBarStyleDarkContent</string>
-	<key>UIUserInterfaceStyle</key>
-	<string>Light</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>ru.torgana.app</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>torgana</string>
+			</array>
+		</dict>
+	</array>
+	<key>UIAppFonts</key>
+	<array>
+		<string>Onest-Regular.ttf</string>
+		<string>Onest-Medium.ttf</string>
+		<string>Onest-SemiBold.ttf</string>
+		<string>Onest-Bold.ttf</string>
+		<string>Onest-ExtraBold.ttf</string>
+	</array>
 </dict>
 </plist>

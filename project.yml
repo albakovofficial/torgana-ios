@@ -4,7 +4,7 @@ name: Torgana
 options:
   bundleIdPrefix: ru.torgana
   deploymentTarget:
-    iOS: "16.0"
+    iOS: "17.0"
   developmentLanguage: ru
   createIntermediateGroups: true
 settings:

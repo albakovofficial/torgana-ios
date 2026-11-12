@@ -19,7 +19,6 @@ Torgana/Native/                 Bridge (команды сайта), PushManager 
 Torgana/Resources/              Info.plist, entitlements, PrivacyInfo.xcprivacy, иконка и цвета
 ci/ExportOptions.plist          настройки выгрузки в App Store Connect
 .github/workflows/ios.yml       сборка и выгрузка в TestFlight
-site/apple-app-site-association файл для сайта (Universal Links)
 BRIDGE.md                       что должен уметь сайт: команды, события, проверки на сервере
 ```
 
@@ -33,7 +32,7 @@ BRIDGE.md                       что должен уметь сайт: ком�
 
 ## Что сделать в Apple (после активации Apple Developer)
 
-1. **Team ID** — developer.apple.com → Membership details. Вписать в `site/apple-app-site-association` вместо `TEAMID`.
+1. **Team ID** — developer.apple.com → Membership details. Нужен для секрета `APPLE_TEAM_ID` и ключа push (п. 5).
 2. **Ключ App Store Connect API** — appstoreconnect.apple.com → Users and Access → Integrations → App Store Connect API →
    Team Keys → «+», роль **Admin** (нужна, чтобы сборка сама создавала сертификаты и профили). Скачать `.p8` (даётся один раз),
    записать Key ID и Issuer ID.
@@ -42,19 +41,22 @@ BRIDGE.md                       что должен уметь сайт: ком�
 4. **Карточка приложения** — App Store Connect → Apps → «+» → New App: iOS, название «Торгана», язык русский,
    Bundle ID `ru.torgana.app` (если его нет в списке — сначала запустить выпуск в TestFlight, сборка создаст App ID сама,
    или создать вручную в Certificates, Identifiers & Profiles с Push Notifications, Sign in with Apple, Associated Domains).
-5. **Ключ APNs для сервера** — Certificates, Identifiers & Profiles → Keys → «+» → Apple Push Notifications service.
-   `.p8`, Key ID и Team ID — на сервер сайта (не в этот репозиторий).
+5. **Ключ APNs для push** — Certificates, Identifiers & Profiles → Keys → «+» → Apple Push Notifications service.
+   `.p8`, Key ID и Team ID — на сайте в «Модерация → Настройки → Приложение iPhone» (не в этот репозиторий).
+   Там же кнопка «Проверить на моём iPhone». С ключом сайт сам отдаёт файл Universal Links
+   `https://torgana.ru/.well-known/apple-app-site-association` (Team ID берётся из ключа).
 
-## Что сделать на сайте
+## Что умеет сайт (torgana, с версии 1.56.0)
 
-Подробно — в [BRIDGE.md](BRIDGE.md). Коротко:
+Подробно — в [BRIDGE.md](BRIDGE.md).
 
-1. Режим приложения по `html.in-app`: спрятать web-push, «установить на экран», оплату; «Поделиться» → мост.
-2. `POST /api/push/apns` — сохранять токены устройств; отправлять push через APNs там же, где сейчас web-push.
-3. `POST /api/auth/apple` и кнопка «Войти с Apple» в приложении — обязательна, раз есть вход через Яндекс ID и VK ID (правило 4.8).
-4. «Заблокировать пользователя» в чате и профиле (правило 1.2 для пользовательского контента).
-5. Выложить `site/apple-app-site-association` по адресу `https://torgana.ru/.well-known/apple-app-site-association`
-   (без расширения, `Content-Type: application/json`, без редиректов).
+1. Режим приложения (`window.TorganaApp`): нет оплаты — ни продвижения, ни тарифов, ни раздела «Для бизнеса» (правило 3.1.1);
+   нет web-push и «Установить на экран»; «Поделиться» — системное окно iPhone; число на значке.
+2. Push через APNs: `POST /api/push/apns` (адрес устройства), `POST /api/push/apns/off`; каждое уведомление уходит и в браузеры, и в приложение.
+3. «Войти с Apple»: `POST /api/auth/apple/nonce` → окно Apple → `POST /api/auth/apple` (подпись, aud, одноразовый nonce);
+   привязка Apple ID — в «Настройки → Пароль и вход».
+4. «Заблокировать пользователя» в чате и профиле — есть с 1.48.0 (правило 1.2).
+5. `/.well-known/apple-app-site-association` — сайт отдаёт сам, когда в модерации сохранён ключ Apple.
 
 ## Перед отправкой на проверку
 
@@ -63,4 +65,4 @@ BRIDGE.md                       что должен уметь сайт: ком�
 - Тестовый аккаунт для проверяющего (логин/пароль) — в App Review Information.
 - В заметках для проверяющего перечислить нативные функции (push, «Войти с Apple», «Поделиться», Universal Links) —
   это снижает риск отказа по правилу 4.2 «сайт в обёртке».
-- Иконка `AppIcon.png` — временная (буква «Т» в цветах «Небо и сирень»); заменить настоящим логотипом 1024×1024 без прозрачности.
+- Иконка `AppIcon.png` — знак Торганы на фирменном градиенте, 1024×1024 без прозрачности.

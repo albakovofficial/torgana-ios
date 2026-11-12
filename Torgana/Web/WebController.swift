@@ -11,7 +11,6 @@ final class WebController: NSObject, ObservableObject {
 
     private var started = false
     private var lastURL: URL?
-    private let refresh = UIRefreshControl()
 
     static var appVersion: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
@@ -45,8 +44,7 @@ final class WebController: NSObject, ObservableObject {
         webView.scrollView.keyboardDismissMode = .interactive
         if #available(iOS 16.4, *) { webView.isInspectable = isDebug }
 
-        refresh.addTarget(self, action: #selector(pullToRefresh), for: .valueChanged)
-        webView.scrollView.refreshControl = refresh
+        // Обновление жестом вниз — у сайта (бережёт недописанное сообщение и прокрутку переписки); своё не добавляем, иначе два значка.
     }
 
     private var isDebug: Bool {
@@ -90,10 +88,6 @@ final class WebController: NSObject, ObservableObject {
         if webView.url != nil { webView.reload() } else { load(lastURL ?? Router.shared.baseURL) }
     }
 
-    @objc private func pullToRefresh() {
-        webView.reload()
-    }
-
     // Сообщение сайту: window.addEventListener('torgana-native', e => e.detail).
     func send(_ payload: [String: Any]) {
         DispatchQueue.main.async {
@@ -135,7 +129,6 @@ extension WebController: WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        refresh.endRefreshing()
         failed = false
         if !firstLoadDone { firstLoadDone = true }
         PushManager.shared.resendToken()   // сайт загрузился — отдаём ему адрес устройства для push
@@ -150,7 +143,6 @@ extension WebController: WKNavigationDelegate {
     }
 
     private func handle(_ error: Error) {
-        refresh.endRefreshing()
         let e = error as NSError
         if e.domain == NSURLErrorDomain && e.code == NSURLErrorCancelled { return }
         if e.domain == "WebKitErrorDomain" && e.code == 102 { return } // переход отдан системе

@@ -2,11 +2,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- Выгрузка сборки прямо в App Store Connect (TestFlight). teamID подставляет сборка из секрета APPLE_TEAM_ID. -->
+	<!-- Подпись для App Store Connect (TestFlight): .ipa сохраняется, проверяется и выгружается отдельным шагом. teamID подставляет сборка из секрета APPLE_TEAM_ID. -->
 	<key>method</key>
 	<string>app-store-connect</string>
 	<key>destination</key>
-	<string>upload</string>
+	<string>export</string>
 	<key>signingStyle</key>
 	<string>automatic</string>
 	<key>teamID</key>

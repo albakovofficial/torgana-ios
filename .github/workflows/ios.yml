@@ -107,23 +107,24 @@ jobs:
           plutil -replace teamID -string "$APPLE_TEAM_ID" ci/ExportOptions.plist
           echo "Версия $VERSION, сборка ${{ github.run_number }}"
 
-      - name: Архив (подпись — автоматически через ключ API)
+      # Архив подписываем «для себя» (ad-hoc, с нашими entitlements): обычная подпись разработчика требует
+      # зарегистрированного iPhone, а для TestFlight она и не нужна. Настоящую подпись App Store ставит экспорт ниже.
+      - name: Архив
         run: |
           set -o pipefail
           xcodebuild archive \
             -project Torgana.xcodeproj -scheme Torgana -configuration Release \
             -destination 'generic/platform=iOS' \
             -archivePath "$RUNNER_TEMP/Torgana.xcarchive" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$ASC_KEY_PATH" \
-            -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="-" AD_HOC_CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGNING_REQUIRED=NO PROVISIONING_PROFILE_SPECIFIER="" \
             MARKETING_VERSION="$VERSION" \
             CURRENT_PROJECT_VERSION="$BUILD" 2>&1 | tee archive.log | grep -E "error:|ARCHIVE (SUCCEEDED|FAILED)" || true
           grep -q "ARCHIVE SUCCEEDED" archive.log
+          echo "Entitlements архива:"; codesign -d --entitlements - --xml "$RUNNER_TEMP/Torgana.xcarchive/Products/Applications/Torgana.app" | plutil -p - || true
 
-      - name: Выгрузить в App Store Connect
+      - name: Подписать для App Store (сертификат и профиль — через ключ API)
         run: |
           set -o pipefail
           xcodebuild -exportArchive \
@@ -133,18 +134,34 @@ jobs:
             -allowProvisioningUpdates \
             -authenticationKeyPath "$ASC_KEY_PATH" \
             -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID" 2>&1 | tee export.log
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" 2>&1 | tee export.log | grep -E "error|EXPORT (SUCCEEDED|FAILED)" || true
+          grep -q "EXPORT SUCCEEDED" export.log
+          IPA=$(ls "$RUNNER_TEMP"/export/*.ipa | head -1)
+          echo "IPA=$IPA" >> "$GITHUB_ENV"
+          rm -rf "$RUNNER_TEMP/ipa" && mkdir "$RUNNER_TEMP/ipa" && unzip -q "$IPA" -d "$RUNNER_TEMP/ipa"
+          APP=$(ls -d "$RUNNER_TEMP"/ipa/Payload/*.app)
+          codesign -dvv "$APP" 2>&1 | grep -E "Authority|TeamIdentifier" || true
+          codesign -d --entitlements - --xml "$APP" > ent.plist; plutil -p ent.plist
+          plutil -extract aps-environment raw ent.plist | grep -q production || { echo "::error::В подписанной сборке нет push (aps-environment=production)"; exit 1; }
+
+      - name: Выгрузить в App Store Connect
+        run: |
+          mkdir -p ~/.appstoreconnect/private_keys && cp "$ASC_KEY_PATH" ~/.appstoreconnect/private_keys/
+          xcrun altool --upload-app -t ios -f "$IPA" --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID" 2>&1 | tee upload.log
+          grep -qiE "UPLOAD SUCCEEDED|No errors uploading" upload.log
           echo "Сборка $VERSION ($BUILD) отправлена. Через 10–30 минут она появится в App Store Connect → TestFlight."
 
       - name: Логи
         if: failure()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: testflight-logs
           path: |
             archive.log
             export.log
+            upload.log
 
       - name: Удалить ключ
         if: always()
-        run: rm -f "$RUNNER_TEMP"/AuthKey_*.p8
+        run: rm -f "$RUNNER_TEMP"/AuthKey_*.p8 ~/.appstoreconnect/private_keys/AuthKey_*.p8

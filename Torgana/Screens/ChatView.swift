@@ -28,30 +28,38 @@ struct ChatView: View {
 
     private var convId: Int? { if case .conv(let id) = kind { return id } else { return nil } }
 
+    @Environment(\.dismiss) private var dismiss
+    @State private var asksUsed = false
+
     var body: some View {
         VStack(spacing: 0) {
-            if let l = data?.listing { listingBar(l) }
+            chatHeader
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(spacing: 6) {
+                    LazyVStack(spacing: 8) {
                         if messages.isEmpty && error == nil {
                             if data == nil && convId != nil { LoadingView() } else { hint }
                         }
                         ForEach(Array(messages.enumerated()), id: \.element.id) { i, m in
                             if i == 0 || !Calendar.current.isDate(date(m), inSameDayAs: date(messages[i - 1])) {
-                                Text(Fmt.day(m.createdAt).capitalizedFirst).font(.on(12, .semibold)).foregroundStyle(T.faint).padding(.vertical, 8)
+                                Text(Fmt.day(m.createdAt)).font(.on(12)).foregroundStyle(T.muted).padding(.vertical, 8)
                             }
                             bubble(m).id(m.id)
                         }
                         if typing {
-                            HStack { TypingDots().padding(.leading, 6); Spacer() }.id("typing")
+                            HStack(spacing: 8) {
+                                TypingDots()
+                                Text("\(data?.other?.name ?? "Собеседник") печатает").font(.on(13.5)).foregroundStyle(T.text2)
+                                Spacer()
+                            }
+                            .id("typing")
                         }
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
+                    .padding(20)
                 }
                 .scrollDismissesKeyboard(.interactively)
                 .defaultScrollAnchor(.bottom)
+                .background(LinearGradient(colors: [Color.dyn(0xF6F8FE, 0x12151F), Color.dyn(0xF9F8FF, 0x12151F)], startPoint: .top, endPoint: .bottom))
                 .onChange(of: messages.last?.id) { _, id in
                     if let id { withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(id, anchor: .bottom) } }
                 }
@@ -61,10 +69,10 @@ struct ChatView: View {
             }
             composer
         }
-        .background(T.bg)
-        .navigationTitle(title)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar { toolbar }
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(T.line, lineWidth: 1))
+        .padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 8)
+        .sitePage()
         .hidesTabBar()
         .task(id: phase) {
             guard phase == .active else { return }
@@ -88,13 +96,6 @@ struct ChatView: View {
         }
     }
 
-    private var title: String {
-        switch kind {
-        case .support: return "Поддержка"
-        case .conv: return data?.other?.name ?? "Переписка"
-        }
-    }
-
     private var hint: some View {
         Text(kind == .support ? "Напишите, что случилось, — модератор ответит здесь же. Можно приложить снимок экрана." : "Начните переписку — продавец получит уведомление.")
             .font(.on(14)).foregroundStyle(T.muted).multilineTextAlignment(.center).padding(30)
@@ -102,46 +103,56 @@ struct ChatView: View {
 
     private func date(_ m: Message) -> Date { Date(timeIntervalSince1970: (m.createdAt ?? 0) / 1000) }
 
-    // MARK: шапка с объявлением
-    private func listingBar(_ l: ChatListing) -> some View {
-        Button { nav.push(.listing(l.id)) } label: {
-            HStack(spacing: 12) {
-                RemoteImage(url: API.shared.media(l.photo)).frame(width: 44, height: 44).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    // MARK: шапка переписки (.chat-head): назад 40, фото объявления 44, название 15/700, «цена · имя» 13.5, «ещё» 40
+    private var chatHeader: some View {
+        HStack(spacing: 10) {
+            Button { dismiss() } label: { RoundIcon(icon: "chevron.left", size: 40) }.buttonStyle(.plain).accessibilityLabel("Назад")
+            if kind == .support {
+                Image("Logo").resizable().frame(width: 44, height: 44).clipShape(Circle())
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(l.title).font(.on(15, .semibold)).foregroundStyle(T.text).lineLimit(1)
-                    Text(l.status == "active" || l.status == nil ? Fmt.price(l.price, unit: l.priceUnit) : (l.status == "sold" ? "Продано" : "Снято с публикации"))
-                        .font(.on(14)).foregroundStyle(T.muted).lineLimit(1)
+                    Text("Поддержка Торганы").font(.on(15, .bold)).foregroundStyle(T.text)
+                    Text("Отвечают люди, а не боты").font(.on(13.5)).foregroundStyle(T.text2)
                 }
-                Spacer()
-                if data?.conversation?.role == "buyer" && l.status == "active" && (l.bargain ?? true) && data?.block == nil {
-                    Button("Своя цена") { offerSheet = true }
-                        .font(.on(14, .semibold)).foregroundStyle(T.accent)
-                        .padding(.horizontal, 12).frame(height: 34).background(Capsule().fill(T.accentSoft))
-                        .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 16).padding(.vertical, 10)
-            .background(T.card)
-            .overlay(alignment: .bottom) { Divider().overlay(T.line) }
-        }
-        .buttonStyle(.plain)
-    }
-
-    @ToolbarContentBuilder private var toolbar: some ToolbarContent {
-        if let o = data?.other, convId != nil {
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Button { nav.push(.user(o.id)) } label: { Label("Профиль собеседника", systemImage: "person") }
-                    if let id = convId { Button { nav.push(.web("/messages/\(id)")) } label: { Label("Сделка и отзыв", systemImage: "hand.thumbsup") } }
-                    Button(role: data?.block == "me" ? nil : .destructive) { confirmBlock = true } label: {
-                        Label(data?.block == "me" ? "Разблокировать" : "Заблокировать", systemImage: "hand.raised")
+                Spacer(minLength: 0)
+            } else {
+                Button { if let l = data?.listing { nav.push(.listing(l.id)) } } label: {
+                    HStack(spacing: 10) {
+                        RemoteImage(url: API.shared.media(data?.listing?.photo)).frame(width: 44, height: 44).clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(data?.listing?.title ?? data?.other?.name ?? "Переписка").font(.on(15, .bold)).foregroundStyle(T.text).lineLimit(1)
+                            HStack(spacing: 5) {
+                                if let l = data?.listing {
+                                    Text(l.status == "active" || l.status == nil ? Fmt.price(l.price, unit: l.priceUnit) : (l.status == "sold" ? "Продано" : "Снято"))
+                                        .font(.on(13.5, .bold)).foregroundStyle(T.text)
+                                    Text("·").font(.on(13.5)).foregroundStyle(T.muted)
+                                }
+                                Text(data?.other?.name ?? "").font(.on(13.5)).foregroundStyle(T.text2)
+                            }
+                            .lineLimit(1)
+                        }
+                        Spacer(minLength: 0)
                     }
-                } label: { Image(systemName: "ellipsis.circle") }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                if let o = data?.other, let id = convId {
+                    Menu {
+                        Button { nav.push(.user(o.id)) } label: { Label("Профиль собеседника", systemImage: "person") }
+                        Button { nav.push(.web("/messages/\(id)")) } label: { Label("Сделка и отзыв", systemImage: "hand.thumbsup") }
+                        Button(role: data?.block == "me" ? nil : .destructive) { confirmBlock = true } label: {
+                            Label(data?.block == "me" ? "Разблокировать" : "Заблокировать", systemImage: "hand.raised")
+                        }
+                    } label: { RoundIcon(icon: "ellipsis", size: 40) }
+                    .accessibilityLabel("Ещё")
+                }
             }
         }
+        .padding(.horizontal, 12).padding(.vertical, 11)
+        .background(T.card)
+        .overlay(alignment: .bottom) { T.line.frame(height: 1) }
     }
 
-    // MARK: пузырь
+    // MARK: пузырь (.msg): свои — голубые, угол 6 внизу справа; чужие — белые с тенью, угол 6 внизу слева; 15/400, 10×14
     @ViewBuilder private func bubble(_ m: Message) -> some View {
         if m.kind == "offer", let oid = m.offerId, let o = offers.first(where: { $0.id == oid }) {
             OfferCard(offer: o, mine: m.mine, role: data?.conversation?.role ?? "") { action in
@@ -166,21 +177,25 @@ struct ChatView: View {
                         RemoteImage(url: u).frame(width: 220, height: 220).clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
                     if let b = m.body, !b.isEmpty {
-                        Text(b).font(.on(16)).foregroundStyle(T.text).textSelection(.enabled)
+                        Text(b).font(.on(15)).foregroundStyle(T.text).lineSpacing(3).textSelection(.enabled)
                     }
                     HStack(spacing: 3) {
                         Spacer(minLength: 0)
-                        Text(Fmt.time(m.createdAt)).font(.on(11)).foregroundStyle(T.faint)
+                        Text(Fmt.time(m.createdAt)).font(.on(11)).foregroundStyle(T.muted)
                         if m.mine && kind != .support {
                             Image(systemName: m.id <= readUpTo ? "checkmark.circle.fill" : "checkmark")
                                 .font(.system(size: 10, weight: .bold))
-                                .foregroundStyle(m.id <= readUpTo ? T.accent : T.faint)
+                                .foregroundStyle(m.id <= readUpTo ? T.accent : T.muted)
                                 .accessibilityLabel(m.id <= readUpTo ? "Прочитано" : "Доставлено")
                         }
                     }
                 }
-                .padding(.horizontal, 13).padding(.vertical, 9)
-                .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(m.mine ? T.msgOut : T.surface))
+                .padding(.horizontal, 14).padding(.vertical, 10)
+                .background(
+                    UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: m.mine ? 20 : 6, bottomTrailingRadius: m.mine ? 6 : 20, topTrailingRadius: 20, style: .continuous)
+                        .fill(m.mine ? T.msgOut : T.card)
+                        .shadow(color: Color(hex: 0x1E2A6B).opacity(m.mine ? 0 : 0.08), radius: 3, y: 1)
+                )
                 .contextMenu {
                     if kind != .support { Button { replyTo = m; focused = true } label: { Label("Ответить", systemImage: "arrowshape.turn.up.left") } }
                     if let b = m.body, !b.isEmpty { Button { UIPasteboard.general.string = b } label: { Label("Копировать", systemImage: "doc.on.doc") } }
@@ -191,7 +206,20 @@ struct ChatView: View {
         }
     }
 
-    // MARK: поле ввода
+    /// Быстрые вопросы покупателя — под это объявление (как buyerAsks сайта): торг — если разрешён, доставка — если отправляет.
+    private var asks: [String] {
+        guard let l = data?.listing, data?.conversation?.role == "buyer", l.status == "active", !asksUsed, text.isEmpty else { return [] }
+        return ["Здравствуйте! Ещё актуально?", "Где и когда можно посмотреть?"]
+            + (l.price != nil && l.bargain == true ? ["Торг возможен?"] : [])
+            + (l.delivery == true ? ["Отправите по России?"] : [])
+            + ["Пришлёте ещё фото?"]
+    }
+
+    private var canOffer: Bool {
+        data?.conversation?.role == "buyer" && data?.listing?.status == "active" && (data?.listing?.bargain ?? true) && data?.listing?.price != nil
+    }
+
+    // MARK: поле ввода (.chat-form): ₽ 44 (предложить цену), фото 48, поле со скруглением 24, отправка 48
     private var composer: some View {
         VStack(spacing: 0) {
             if data?.block != nil {
@@ -199,6 +227,23 @@ struct ChatView: View {
                     .font(.on(14, .medium)).foregroundStyle(T.danger)
                     .frame(maxWidth: .infinity).padding(14).background(T.surface)
             } else {
+                if !asks.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(asks, id: \.self) { t in
+                                Button { text = t; asksUsed = true; focused = true } label: {
+                                    Text(t).font(.on(13, .semibold)).foregroundStyle(T.accent)
+                                        .padding(.horizontal, 12).frame(height: 34)
+                                        .background(Capsule().fill(T.accentSoft))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, 14)
+                    }
+                    .padding(.top, 10)
+                    .overlay(alignment: .top) { T.line.frame(height: 1) }
+                }
                 if let r = replyTo {
                     HStack(spacing: 10) {
                         Image(systemName: "arrowshape.turn.up.left.fill").foregroundStyle(T.accent)
@@ -209,35 +254,45 @@ struct ChatView: View {
                         Spacer()
                         Button { replyTo = nil } label: { Image(systemName: "xmark").foregroundStyle(T.muted) }.buttonStyle(.plain)
                     }
-                    .padding(.horizontal, 16).padding(.vertical, 8)
-                    .background(T.card)
+                    .padding(.horizontal, 16).padding(.top, 10)
                 }
                 HStack(alignment: .bottom, spacing: 8) {
+                    if canOffer {
+                        Button { offerSheet = true } label: {
+                            Text("₽").font(.on(20, .heavy)).foregroundStyle(T.accent)
+                                .frame(width: 44, height: 44).background(Circle().fill(T.accentSoft))
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.bottom, 2)
+                        .accessibilityLabel("Предложить цену")
+                    }
                     PhotosPicker(selection: $photoItem, matching: .images) {
-                        Image(systemName: "photo").font(.system(size: 19, weight: .semibold)).foregroundStyle(T.muted)
-                            .frame(width: 44, height: 44)
+                        Image(systemName: "camera").font(.system(size: 18, weight: .regular)).foregroundStyle(T.text)
+                            .frame(width: 48, height: 48).background(Circle().fill(T.surface))
                     }
                     .accessibilityLabel("Отправить фото")
-                    TextField("Сообщение", text: $text, axis: .vertical)
+                    TextField("Сообщение…", text: $text, axis: .vertical)
                         .font(.on(16))
                         .lineLimit(1...5)
                         .focused($focused)
-                        .padding(.horizontal, 16).padding(.vertical, 11)
-                        .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(T.surface))
+                        .padding(.horizontal, 18).padding(.vertical, 13)
+                        .background(RoundedRectangle(cornerRadius: 24, style: .continuous).fill(T.card))
+                        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(focused ? T.accentFill.opacity(0.55) : T.line, lineWidth: 1))
                     Button { Task { await sendText() } } label: {
-                        Image(systemName: "arrow.up").font(.system(size: 18, weight: .bold)).foregroundStyle(.white)
-                            .frame(width: 44, height: 44).background(Circle().fill(T.grad))
-                            .opacity(canSend ? 1 : 0.4)
+                        Image(systemName: "chevron.right").font(.system(size: 17, weight: .bold)).foregroundStyle(canSend ? .white : T.accent)
+                            .frame(width: 48, height: 48)
+                            .background(Circle().fill(canSend ? T.accentFill : T.accentFill.opacity(0.12)))
+                            .overlay(Circle().strokeBorder(T.accentFill.opacity(canSend ? 0 : 0.25), lineWidth: 1))
                     }
                     .buttonStyle(.plain)
                     .disabled(!canSend)
                     .accessibilityLabel("Отправить")
                 }
-                .padding(.horizontal, 10).padding(.vertical, 8)
-                .background(T.card)
+                .padding(14)
             }
         }
-        .overlay(alignment: .top) { Divider().overlay(T.line) }
+        .background(T.card)
+        .overlay(alignment: .top) { if asks.isEmpty { T.line.frame(height: 1) } }
     }
 
     private var canSend: Bool { !sending && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
@@ -398,32 +453,53 @@ struct OfferCard: View {
     let onAction: (String) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label(offer.bySeller == true ? "Встречная цена" : "Предложение цены", systemImage: "tag.fill")
-                .font(.on(13, .semibold)).foregroundStyle(T.accent)
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(Fmt.price(offer.price)).font(.on(22, .heavy)).foregroundStyle(T.text)
-                if let lp = offer.listingPrice { Text(Fmt.price(lp)).font(.on(14)).strikethrough().foregroundStyle(T.faint) }
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 6) {
+                Image(systemName: "tag").font(.system(size: 12, weight: .semibold))
+                Text(offer.bySeller == true ? "ВСТРЕЧНАЯ ЦЕНА" : "ПРЕДЛОЖЕНИЕ ЦЕНЫ").font(.on(12.5, .bold)).kerning(0.4)
             }
-            Text(statusText).font(.on(13, .medium)).foregroundStyle(statusColor)
+            .foregroundStyle(T.accent)
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text(Fmt.price(offer.price)).font(.on(26, .heavy)).foregroundStyle(T.text)
+                if let lp = offer.listingPrice { Text(Fmt.price(lp)).font(.on(15)).strikethrough().foregroundStyle(T.muted) }
+            }
+            .padding(.top, 6)
+            if let lp = offer.listingPrice, lp > 0, offer.price < lp {
+                Text("−\(Int(((Double(lp - offer.price) / Double(lp)) * 100).rounded()))%")
+                    .font(.on(12.5, .bold)).foregroundStyle(T.accent)
+                    .padding(.horizontal, 8).frame(height: 22)
+                    .background(Capsule().fill(T.card))
+                    .padding(.top, 8)
+            }
+            HStack(spacing: 6) {
+                if offer.status == "pending" { Image(systemName: "clock").font(.system(size: 13, weight: .medium)) }
+                Text(statusText)
+            }
+            .font(.on(14, .semibold)).foregroundStyle(statusColor)
+            .padding(.top, 10)
             if offer.status == "pending" {
                 if mine {
-                    Button("Отозвать") { onAction("withdraw") }.buttonStyle(TButton(kind: .line, height: 40))
+                    HStack {
+                        Spacer()
+                        Button("Отозвать") { onAction("withdraw") }.font(.on(14, .semibold)).foregroundStyle(T.muted).underline().buttonStyle(.plain)
+                    }
+                    .padding(.top, 8)
                 } else {
                     HStack(spacing: 8) {
                         Button("Принять") { onAction("accept") }.buttonStyle(TButton(kind: .accent, height: 40))
-                        Button("Отклонить") { onAction("decline") }.buttonStyle(TButton(kind: .soft, height: 40))
+                        Button("Отклонить") { onAction("decline") }.buttonStyle(TButton(kind: .line, height: 40))
                     }
+                    .padding(.top, 12)
                     if role == "seller" && offer.bySeller != true {
-                        Button("Предложить свою цену") { onAction("counter") }.buttonStyle(TButton(kind: .line, height: 40))
+                        Button("Предложить свою цену") { onAction("counter") }.buttonStyle(TButton(kind: .soft, height: 40)).padding(.top, 8)
                     }
                 }
             }
         }
-        .padding(14)
-        .frame(maxWidth: 290, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(T.card))
-        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(T.accentSoft2, lineWidth: 1.5))
+        .padding(.horizontal, 16).padding(.top, 16).padding(.bottom, 14)
+        .frame(maxWidth: 270, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(T.accentSoft).shadow(color: T.accentFill.opacity(0.08), radius: 10, y: 6))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(T.accent, lineWidth: 1))
     }
 
     private var statusText: String {
@@ -432,7 +508,7 @@ struct OfferCard: View {
         case "declined": return "Отклонено"
         case "withdrawn": return "Отозвано"
         case "countered": return "Ответили своей ценой"
-        default: return mine ? "Ждём ответа" : "Ждёт вашего ответа"
+        default: return mine ? (role == "seller" ? "Ждём ответа покупателя" : "Ждём ответа продавца") : "Ждёт вашего ответа"
         }
     }
 
@@ -530,8 +606,4 @@ extension UIImage {
         fmt.scale = 1
         return UIGraphicsImageRenderer(size: target, format: fmt).image { _ in draw(in: CGRect(origin: .zero, size: target)) }
     }
-}
-
-extension String {
-    var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
 }

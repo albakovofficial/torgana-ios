@@ -82,6 +82,45 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Переписка о объявлении (создаётся или находится) и, если задано, предложение цены; затем — открыть чат.
+    /// Гостю — вход. Ошибка — всплывающим сообщением.
+    func openChat(listingId: Int, offer: Int? = nil) async {
+        guard me != nil else { needLogin = true; return }
+        do {
+            let r: IdResult = try await API.shared.post("/api/conversations", ["listingId": listingId])
+            if let offer {
+                _ = try await API.shared.post("/api/conversations/\(r.id)/offer", ["price": offer], as: JSONValue.self)
+                show("Предложение отправлено — ответ придёт в чат")
+            }
+            Nav.shared.push(.chat(r.id))
+        } catch {
+            show((error as? APIError)?.message ?? "Не получилось", bad: true)
+        }
+    }
+
+    /// Подписаться на продавца или отписаться. nil — не получилось (сообщение уже показано).
+    func follow(_ userId: Int, _ on: Bool) async -> FollowResult? {
+        guard me != nil else { needLogin = true; return nil }
+        do {
+            let r: FollowResult = try await API.shared.post("/api/users/\(userId)/follow", ["follow": on])
+            Haptics.play("light")
+            return r
+        } catch {
+            show((error as? APIError)?.message ?? "Не получилось", bad: true)
+            return nil
+        }
+    }
+
+    /// Выйти: push на этот iPhone больше не слать, сессию закрыть на сервере и в страницах сайта.
+    func logout() async {
+        await PushManager.shared.forget()
+        _ = try? await API.shared.post("/api/auth/logout")
+        for c in HTTPCookieStorage.shared.cookies ?? [] where c.name == "tg_sid" { HTTPCookieStorage.shared.deleteCookie(c) }
+        favs = [:]
+        await withCheckedContinuation { c in CookieSync.shared.pushToWeb { c.resume() } }
+        await refreshMe()
+    }
+
     /// Нужно войти — открывается экран входа.
     @Published var needLogin = false
 }

@@ -191,13 +191,13 @@ struct Seller: Codable, Hashable {
     let activeCount: Int?
     let rep: Rep?
     let badges: Badges?
-    let followers: Int?
+    var followers: Int?
     var following: Bool?
 }
 
 struct ListingResponse: Codable {
     let listing: Listing
-    let seller: Seller?
+    var seller: Seller?
     let similar: [ListingCard]?
 }
 
@@ -270,6 +270,7 @@ struct ChatListing: Codable, Hashable {
     let priceUnit: String?
     let status: String?
     let bargain: Bool?
+    let delivery: Bool?
     let photo: String?
     let city: String?
 }

@@ -86,11 +86,11 @@ struct FavButton: View {
             Task { _ = await app.toggleFav(id, current: on) }
         } label: {
             Image(systemName: on ? "heart.fill" : "heart")
-                .font(.system(size: size * 0.45, weight: .semibold))
+                .font(.system(size: size * 0.5, weight: .regular))
                 .foregroundStyle(on ? Color(hex: 0xE5484D) : T.text)
                 .frame(width: size, height: size)
-                .background(Circle().fill(T.card))
-                .shadow(color: .black.opacity(0.10), radius: 6, y: 2)
+                .background(Circle().fill(Color.dyn(0xFFFFFF, 0x171B27)))
+                .shadow(color: .black.opacity(0.06), radius: 5, y: 2)
                 .contentTransition(.symbolEffect(.replace))
         }
         .buttonStyle(.plain)
@@ -98,7 +98,8 @@ struct FavButton: View {
     }
 }
 
-// MARK: - Карточка объявления в ленте (как .card на сайте).
+// MARK: - Карточка объявления в ленте (.card сайта): фото 1:1 со скруглением 20, цена 17/750, название 14.5/500,
+// характеристики и город — 12.5, «Доставка» — синим, продавец — аватарка 20 и имя.
 struct ListingCardView: View {
     let item: ListingCard
 
@@ -108,7 +109,7 @@ struct ListingCardView: View {
                 Color.clear
                     .aspectRatio(1, contentMode: .fit)
                     .overlay(RemoteImage(url: API.shared.media(item.photo)))
-                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                     .overlay(alignment: .bottomLeading) {
                         if item.hasVideo == true {
                             Label("Видео", systemImage: "play.fill")
@@ -120,47 +121,60 @@ struct ListingCardView: View {
                         }
                     }
                     .overlay(
-                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
                             .strokeBorder(item.boost?.frame == true ? T.accentFill : .clear, lineWidth: 2.5)
                     )
-                FavButton(id: item.id, initial: item.isFav, size: 36)
-                    .padding(8)
+                FavButton(id: item.id, initial: item.isFav, size: 38)
+                    .padding(6)
             }
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(Fmt.price(item.price, unit: item.priceUnit))
-                        .font(.on(17, .bold))
-                        .foregroundStyle(T.text)
+                    Text(Fmt.price(item.price, unit: item.priceUnit)).font(.on(17, .bold)).foregroundStyle(T.text)
                     if let was = item.priceWas, let p = item.price, was > p {
                         Text(Fmt.price(was)).font(.on(12)).strikethrough().foregroundStyle(T.faint)
                     }
                 }
                 .lineLimit(1)
+                .padding(.bottom, 4)
                 Text(item.title)
-                    .font(.on(15))
-                    .foregroundStyle(T.text)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
-                if item.goodPrice == true {
-                    Text("Хорошая цена").font(.on(12, .semibold)).foregroundStyle(T.good)
+                    .font(.on(14.5, .medium)).foregroundStyle(T.text)
+                    .lineLimit(2).multilineTextAlignment(.leading)
+                    .padding(.bottom, 3)
+                if let sum = item.summary, !sum.isEmpty {
+                    Text(sum).font(.on(12.5)).foregroundStyle(T.text2).lineLimit(1).padding(.bottom, 3)
                 }
                 Text([item.metro.flatMap { $0.isEmpty ? nil : "м. \($0)" } ?? item.city, Fmt.day(item.createdAt)].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
-                    .font(.on(13))
-                    .foregroundStyle(T.muted)
-                    .lineLimit(1)
+                    .font(.on(12.5)).foregroundStyle(T.muted).lineLimit(1)
+                if item.goodPrice == true {
+                    Text("Хорошая цена").font(.on(12.5, .semibold)).foregroundStyle(T.good).padding(.top, 3)
+                }
+                if item.delivery == true {
+                    Label("Доставка", systemImage: "truck.box").font(.on(12.5, .semibold)).foregroundStyle(T.accent)
+                        .labelStyle(TightLabel()).padding(.top, 3)
+                }
                 if let s = item.seller {
                     HStack(spacing: 6) {
                         Avatar(name: s.name, url: s.avatar, size: 20)
-                        Text(s.name).font(.on(13)).foregroundStyle(T.text2).lineLimit(1)
+                        Text(s.name).font(.on(12.5)).foregroundStyle(T.text2).lineLimit(1)
                         if s.shop == true { Image(systemName: "checkmark.seal.fill").font(.system(size: 11)).foregroundStyle(T.accent) }
                     }
-                    .padding(.top, 5)
+                    .padding(.top, 10)
                 }
             }
             .padding(.horizontal, 2)
-            .padding(.top, 10)
+            .padding(.top, 9)
         }
         .contentShape(Rectangle())
+    }
+}
+
+/// Значок и текст вплотную (4 точки), значок поменьше — как иконки в строках сайта.
+struct TightLabel: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 4) {
+            configuration.icon.font(.system(size: 11, weight: .semibold))
+            configuration.title
+        }
     }
 }
 
@@ -184,7 +198,7 @@ struct ListingGrid: View {
     }
 }
 
-// MARK: - Плашка-фильтр (как .chip на сайте).
+// MARK: - Плашка-фильтр (.cat-pill сайта): 38 точек, 13.5/600; выбранная — синяя с тонкой синей обводкой.
 struct Chip: View {
     let title: String
     var icon: String? = nil
@@ -194,42 +208,45 @@ struct Chip: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 7) {
-                if let icon { Image(systemName: icon).font(.system(size: 14, weight: .semibold)) }
-                Text(title).font(.on(15, .semibold)).lineLimit(1)
+                if let icon { Image(systemName: icon).font(.system(size: 14, weight: .medium)) }
+                Text(title).font(.on(13.5, .semibold)).lineLimit(1)
             }
-            .padding(.horizontal, 16)
-            .frame(height: 42)
+            .padding(.leading, icon == nil ? 14 : 11).padding(.trailing, 14)
+            .frame(height: 38)
             .foregroundStyle(on ? T.accent : T.text)
-            .background(Capsule().fill(on ? T.accentSoft : T.surface))
-            .overlay(Capsule().strokeBorder(on ? T.accent : .clear, lineWidth: 1.5))
+            .background(Capsule().fill(on ? T.accentFill.opacity(0.10) : T.surface))
+            .overlay(Capsule().strokeBorder(on ? T.accent : .clear, lineWidth: 1))
         }
         .buttonStyle(.plain)
     }
 }
 
-// MARK: - Пустой экран, ошибка, загрузка.
+// MARK: - Пустой экран (.empty сайта): панель --surface со скруглением 28, заголовок 22/700, текст 16, тёмная кнопка.
 struct EmptyState: View {
-    let icon: String
+    var icon: String? = nil
     let title: String
     var text: String = ""
     var button: String? = nil
     var action: (() -> Void)? = nil
 
     var body: some View {
-        VStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: 30, weight: .semibold))
-                .foregroundStyle(T.accent)
-                .frame(width: 72, height: 72)
-                .background(Circle().fill(T.accentSoft))
-            Text(title).font(.on(20, .bold)).foregroundStyle(T.text).multilineTextAlignment(.center)
-            if !text.isEmpty { Text(text).font(.on(15)).foregroundStyle(T.muted).multilineTextAlignment(.center) }
+        VStack(spacing: 10) {
+            if let icon {
+                Image(systemName: icon)
+                    .font(.system(size: 30, weight: .medium)).foregroundStyle(T.accent)
+                    .frame(width: 84, height: 84)
+                    .background(RoundedRectangle(cornerRadius: 26, style: .continuous).fill(T.card).shadow(color: T.accentFill.opacity(0.12), radius: 15, y: 10))
+                    .padding(.bottom, 6)
+            }
+            Text(title).font(.on(22, .bold)).foregroundStyle(T.text).multilineTextAlignment(.center)
+            if !text.isEmpty { Text(text).font(.on(16)).foregroundStyle(T.muted).multilineTextAlignment(.center) }
             if let button, let action {
-                Button(button, action: action).buttonStyle(TButton(kind: .dark, full: false)).padding(.top, 6)
+                Button(button, action: action).buttonStyle(TButton(kind: .dark, height: 48, full: false)).padding(.top, 12)
             }
         }
-        .padding(28)
+        .padding(.horizontal, 24).padding(.vertical, 56)
         .frame(maxWidth: .infinity)
+        .background(RoundedRectangle(cornerRadius: 28, style: .continuous).fill(T.surface))
     }
 }
 

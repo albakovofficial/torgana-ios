@@ -7,28 +7,28 @@ struct FavoritesView: View {
     @State private var loading = true
     @State private var error: String?
 
+    @EnvironmentObject private var nav: Nav
+
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Избранное").font(.on(30, .heavy)).foregroundStyle(T.text).padding(.top, 8)
+            VStack(alignment: .leading, spacing: 24) {
+                Text("Избранное").font(.on(22, .bold)).foregroundStyle(T.text).padding(.top, 24)
                 if app.me == nil {
-                    EmptyState(icon: "heart", title: "Сохраняйте понравившееся", text: "Войдите, чтобы отмечать объявления сердечком и узнавать, когда они дешевеют.", button: "Войти") { app.needLogin = true }
-                        .panel()
+                    EmptyState(title: "Сохраняйте понравившееся", text: "Войдите, чтобы отмечать объявления сердечком и узнавать, когда они дешевеют.", button: "Войти") { app.needLogin = true }
                 } else if loading && items.isEmpty {
                     LoadingView()
                 } else if let error, items.isEmpty {
-                    EmptyState(icon: "wifi.slash", title: "Не загрузилось", text: error, button: "Повторить") { Task { await load() } }
+                    EmptyState(title: "Не загрузилось", text: error, button: "Повторить") { Task { await load() } }
                 } else if shown.isEmpty {
-                    EmptyState(icon: "heart", title: "Пока пусто", text: "Нажмите на сердечко у объявления — оно появится здесь.").panel()
+                    EmptyState(title: "Пока пусто", text: "Нажимайте на сердечко у объявлений, чтобы сохранить их здесь.", button: "Смотреть объявления") { nav.open(path: "/") }
                 } else {
                     ListingGrid(items: shown)
                 }
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 20)
             TabBarSpace()
         }
-        .background(T.bg)
-        .toolbar(.hidden, for: .navigationBar)
+        .sitePage()
         .refreshable { await load() }
         .task(id: app.me?.id) { await load() }
         .onChange(of: app.favs) { _, _ in Task { await load() } }

@@ -52,7 +52,7 @@ final class WebController: NSObject {
             + "post: function (msg) { try { window.webkit.messageHandlers.torgana.postMessage(msg); } catch (e) {} } };"
         let classes = embedded ? "'in-app', 'in-app-ios', 'in-app-native'" : "'in-app', 'in-app-ios'"
         let css = "#header, #footer, #bottom-nav, .cookie-bar { display: none !important; } "
-            + "body { padding-top: env(safe-area-inset-top, 0px); } #app { min-height: 0 !important; padding-bottom: 24px; }"
+            + "#app { min-height: 0 !important; padding-bottom: 110px; }"
         let style = embedded
             ? "var st = document.createElement('style'); st.textContent = '" + css + "'; (document.head || document.documentElement).appendChild(st);"
             : ""
@@ -239,7 +239,7 @@ struct WebPageView: View {
     var body: some View {
         ZStack {
             T.bg.ignoresSafeArea()
-            WebHostView(web: page.web).ignoresSafeArea()
+            WebHostView(web: page.web).ignoresSafeArea(edges: .bottom)
             if page.loading { ProgressView().tint(T.accent) }
             if page.failed { OfflineView { page.retry() } }
         }
@@ -263,16 +263,21 @@ struct WebScreen: View {
     }
 
     var body: some View {
-        WebPageView(page: page)
-            .hidesTabBar()
-            .navigationTitle(title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                if closeOnLogin {
-                    ToolbarItem(placement: .cancellationAction) { Button("Закрыть") { dismiss() } }
-                }
+        if closeOnLogin {
+            // Вход через Яндекс/VK — в окне поверх экрана входа.
+            WebPageView(page: page)
+                .navigationTitle(title)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Закрыть") { dismiss() } } }
+                .onChange(of: app.me?.id) { _, id in if id != nil { dismiss() } }
+        } else {
+            // Раздел сайта внутри приложения: шапка и нижнее меню — родные, как на остальных экранах.
+            VStack(alignment: .leading, spacing: 0) {
+                BackLink().padding(.horizontal, 20)
+                WebPageView(page: page)
             }
-            .onChange(of: app.me?.id) { _, id in if closeOnLogin && id != nil { dismiss() } }
+            .sitePage()
+        }
     }
 }
 

@@ -13,19 +13,19 @@ struct DocView: View {
 
     var body: some View {
         ScrollView {
-            if let text {
-                VStack(alignment: .leading, spacing: 14) {
-                    Text(title).font(.on(26, .heavy)).foregroundStyle(T.text)
-                    Text(text).font(.on(16)).foregroundStyle(T.text).tint(T.accent).lineSpacing(3).textSelection(.enabled)
-                }
-                .padding(16)
-                TabBarSpace()
-            } else if let error {
-                EmptyState(icon: "doc.text", title: "Не открылось", text: error)
-            } else { LoadingView() }
+            VStack(alignment: .leading, spacing: 0) {
+                BackLink()
+                if let text {
+                    PageTitle(text: title, size: 32).padding(.top, 8)
+                    Text(text).font(.on(17)).foregroundStyle(T.text).tint(T.accent).lineSpacing(7).textSelection(.enabled).padding(.top, 20)
+                } else if let error {
+                    EmptyState(title: "Не открылось", text: error).padding(.top, 8)
+                } else { LoadingView() }
+            }
+            .padding(.horizontal, 20)
+            TabBarSpace()
         }
-        .background(T.bg)
-        .navigationBarTitleDisplayMode(.inline)
+        .sitePage()
         .environment(\.openURL, OpenURLAction { url in
             if Router.shared.isInternal(url) || url.scheme == nil { nav.open(path: url.path + (url.query.map { "?" + $0 } ?? "")); return .handled }
             return .systemAction
@@ -41,7 +41,7 @@ struct DocView: View {
 
     /// HTML документа → текст с заголовками, списками и ссылками (шрифт Onest, цвета темы задаёт SwiftUI).
     static func attributed(_ html: String) -> AttributedString {
-        let css = "<style>body{font-family:'Onest-Regular';font-size:16px} h2{font-family:'Onest-Bold';font-size:20px} b,strong{font-family:'Onest-SemiBold'} .muted{color:#888}</style>"
+        let css = "<style>body{font-family:'Onest-Regular';font-size:17px} h2{font-family:'Onest-ExtraBold';font-size:23px} li{margin-bottom:8px} b,strong{font-family:'Onest-SemiBold'} .muted{color:#888}</style>"
         guard let data = (css + html).data(using: .utf8),
               let ns = try? NSMutableAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.html, .characterEncoding: String.Encoding.utf8.rawValue], documentAttributes: nil)
         else { return AttributedString(html) }

@@ -46,7 +46,9 @@ final class Nav: ObservableObject {
     @Published var paths: [Tab: NavigationPath] = [:]
     /// Экраны со своей нижней панелью (объявление) прячут нижнее меню.
     @Published var barHidden = 0
-    var barVisible: Bool { barHidden <= 0 }
+    /// Подача объявления во вкладке «+»: внизу своя панель «Назад / Далее».
+    @Published var editorDock = false
+    var barVisible: Bool { barHidden <= 0 && !(tab == .post && editorDock) }
 
     func path(_ tab: Tab) -> Binding<NavigationPath> {
         Binding(get: { self.paths[tab] ?? NavigationPath() }, set: { self.paths[tab] = $0 })
@@ -158,64 +160,56 @@ struct RouteView: View {
 
 /// Место под нижнее меню внизу прокрутки.
 struct TabBarSpace: View {
-    var body: some View { Color.clear.frame(height: 96) }
+    var body: some View { Color.clear.frame(height: 92) }
 }
 
+// Нижнее меню сайта (.bottom-nav): белая «таблетка» 64 с отступом 12, кнопки 46, у открытого раздела — подпись 14/650
+// на синем 12 %, «+» — круг с переходом. Число непрочитанных — у «Сообщений» (уведомления — в колокольчике шапки).
 struct TabBar: View {
     @EnvironmentObject private var nav: Nav
     @EnvironmentObject private var app: AppState
 
     var body: some View {
         HStack(spacing: 0) {
-            item(.home, "house", "house.fill", "Главная")
-            item(.favorites, "heart", "heart.fill", "Избранное")
+            item(.home, "house", "Главная")
+            item(.favorites, "heart", "Избранное")
             Button { nav.reselect(.post) } label: {
                 Image(systemName: "plus")
-                    .font(.system(size: 24, weight: .semibold))
+                    .font(.system(size: 21, weight: .semibold))
                     .foregroundStyle(.white)
-                    .frame(width: 56, height: 56)
+                    .frame(width: 46, height: 46)
                     .background(Circle().fill(T.grad))
-                    .shadow(color: Color(hex: 0x3D67D0).opacity(0.35), radius: 10, y: 5)
+                    .shadow(color: Color(hex: 0x5B5FD6).opacity(0.35), radius: 10, y: 8)
             }
             .buttonStyle(.plain)
             .frame(maxWidth: .infinity)
             .accessibilityLabel("Подать объявление")
-            item(.messages, "message", "message.fill", "Сообщения", badge: app.unread)
-            item(.profile, "person", "person.fill", "Профиль", badge: app.notices)
+            item(.messages, "message", "Сообщения", badge: app.unread)
+            item(.profile, "person", "Профиль")
         }
         .padding(.horizontal, 8)
-        .frame(height: 70)
+        .frame(height: 64)
         .background(Capsule().fill(T.card))
         .overlay(Capsule().strokeBorder(T.line, lineWidth: 1))
-        .shadow(color: .black.opacity(0.10), radius: 18, y: 8)
-        .padding(.horizontal, 16)
-        .padding(.bottom, 6)
+        .shadow(color: Color(hex: 0x101010).opacity(0.12), radius: 18, y: 12)
+        .padding(.horizontal, 12)
+        .padding(.bottom, 4)
     }
 
-    private func item(_ tab: Tab, _ icon: String, _ iconOn: String, _ label: String, badge: Int = 0) -> some View {
+    private func item(_ tab: Tab, _ icon: String, _ label: String, badge: Int = 0) -> some View {
         let on = nav.tab == tab
         return Button { nav.reselect(tab) } label: {
-            HStack(spacing: 7) {
-                Image(systemName: on ? iconOn : icon)
-                    .font(.system(size: 20, weight: on ? .semibold : .regular))
-                    .overlay(alignment: .topTrailing) {
-                        if badge > 0 {
-                            Text(badge > 99 ? "99+" : "\(badge)")
-                                .font(.on(11, .bold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 5)
-                                .frame(minWidth: 18, minHeight: 18)
-                                .background(Capsule().fill(Color(hex: 0xE5484D)))
-                                .overlay(Capsule().strokeBorder(T.card, lineWidth: 2))
-                                .offset(x: 10, y: -8)
-                        }
-                    }
-                if on { Text(label).font(.on(15, .semibold)).lineLimit(1).fixedSize() }
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 20, weight: .regular))
+                    .overlay(alignment: .topTrailing) { CountBadge(n: badge).offset(x: 11, y: -8) }
+                if on { Text(label).font(.on(14, .semibold)).lineLimit(1).fixedSize() }
             }
-            .foregroundStyle(on ? T.accent : T.muted)
-            .padding(.horizontal, on ? 16 : 0)
-            .frame(height: 50)
-            .background(Capsule().fill(on ? T.accentSoft : .clear))
+            .foregroundStyle(on ? Color.dyn(0x2F53B5, 0x8EA9F7) : T.text)
+            .padding(.leading, on ? 12 : 0).padding(.trailing, on ? 16 : 0)
+            .frame(height: 46)
+            .frame(minWidth: 46)
+            .background(Capsule().fill(on ? T.accentFill.opacity(0.12) : .clear))
             .frame(maxWidth: on ? nil : .infinity)
             .contentShape(Rectangle())
         }

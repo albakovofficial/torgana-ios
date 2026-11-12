@@ -9,39 +9,37 @@ struct MessagesView: View {
     @State private var error: String?
 
     var body: some View {
-        List {
-            Text("Сообщения").font(.on(30, .heavy)).foregroundStyle(T.text)
-                .listRowSeparator(.hidden).listRowBackground(T.bg)
-                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
-            if app.me == nil {
-                EmptyState(icon: "message", title: "Переписка с продавцами", text: "Войдите, чтобы писать продавцам и отвечать покупателям.", button: "Войти") { app.needLogin = true }
-                    .listRowSeparator(.hidden).listRowBackground(T.bg)
-            } else {
-                NavigationLink(value: Route.support) { supportRow }
-                    .listRowBackground(T.bg)
-                    .listRowSeparator(.hidden)
-                if loading && items.isEmpty {
-                    LoadingView().listRowSeparator(.hidden).listRowBackground(T.bg)
-                } else if let error, items.isEmpty {
-                    EmptyState(icon: "wifi.slash", title: "Не загрузилось", text: error, button: "Повторить") { Task { await load() } }
-                        .listRowSeparator(.hidden).listRowBackground(T.bg)
-                } else if items.isEmpty {
-                    EmptyState(icon: "bubble.left.and.bubble.right", title: "Пока нет переписок", text: "Напишите продавцу из объявления — переписка появится здесь.")
-                        .listRowSeparator(.hidden).listRowBackground(T.bg)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Сообщения").font(.on(24, .bold)).foregroundStyle(T.text)
+                    .padding(.horizontal, 12).padding(.top, 22).padding(.bottom, 14)
+                if app.me == nil {
+                    EmptyState(title: "Переписка с продавцами", text: "Войдите, чтобы писать продавцам и отвечать покупателям.", button: "Войти") { app.needLogin = true }
                 } else {
-                    ForEach(items) { c in
-                        NavigationLink(value: Route.chat(c.id)) { ConvRow(c: c) }
-                            .listRowBackground(T.bg)
-                            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                    NavigationLink(value: Route.support) { supportRow }.buttonStyle(.plain)
+                    Text("ПЕРЕПИСКИ").font(.on(11, .semibold)).kerning(0.6).foregroundStyle(T.muted)
+                        .padding(.horizontal, 12).padding(.top, 16).padding(.bottom, 4)
+                    if loading && items.isEmpty {
+                        LoadingView()
+                    } else if let error, items.isEmpty {
+                        EmptyState(title: "Не загрузилось", text: error, button: "Повторить") { Task { await load() } }
+                    } else if items.isEmpty {
+                        Text("Пока нет переписок. Напишите продавцу из объявления — переписка появится здесь.")
+                            .font(.on(14)).foregroundStyle(T.muted).padding(12)
+                    } else {
+                        ForEach(items) { c in
+                            NavigationLink(value: Route.chat(c.id)) { ConvRow(c: c) }.buttonStyle(.plain)
+                        }
                     }
                 }
             }
-            TabBarSpace().listRowSeparator(.hidden).listRowBackground(T.bg)
+            .padding(.horizontal, 11).padding(.bottom, 12)
+            .frame(maxWidth: .infinity, minHeight: 560, alignment: .top)
+            .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(T.line, lineWidth: 1))
+            .padding(.horizontal, 20).padding(.top, 16)
+            TabBarSpace()
         }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
-        .background(T.bg)
-        .toolbar(.hidden, for: .navigationBar)
+        .sitePage()
         .refreshable { await load() }
         .task(id: app.me?.id) {
             // Пока список на экране — обновляем раз в 10 секунд.
@@ -52,17 +50,25 @@ struct MessagesView: View {
         }
     }
 
+    // Поддержка (.conv.support): мягкий переход «небо → сирень», знак Торганы 44, галочка у названия.
     private var supportRow: some View {
-        HStack(spacing: 14) {
-            Image(systemName: "headphones")
-                .font(.system(size: 20, weight: .semibold)).foregroundStyle(.white)
-                .frame(width: 52, height: 52).background(Circle().fill(T.grad))
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Поддержка Торганы").font(.on(16, .bold)).foregroundStyle(T.text)
-                Text("Отвечают модераторы, а не бот").font(.on(14)).foregroundStyle(T.muted).lineLimit(1)
+        HStack(spacing: 12) {
+            Image("Logo").resizable().frame(width: 44, height: 44).clipShape(Circle())
+                .overlay(Circle().strokeBorder(.white, lineWidth: 2))
+                .shadow(color: Color(hex: 0x3D4FB8).opacity(0.28), radius: 8, y: 6)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 4) {
+                    Text("Поддержка Торганы").font(.on(14.5, .bold)).foregroundStyle(T.text)
+                    Image(systemName: "checkmark.seal.fill").font(.system(size: 15)).foregroundStyle(T.accentFill)
+                }
+                Text("Отвечают люди, а не боты").font(.on(12.5)).foregroundStyle(T.muted).lineLimit(1)
             }
+            Spacer(minLength: 4)
+            Image(systemName: "pin").font(.system(size: 13, weight: .medium)).foregroundStyle(T.accent)
         }
-        .padding(.vertical, 6)
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(T.gradSoft))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Color(hex: 0x5B5FD6).opacity(0.12), lineWidth: 1))
     }
 
     private func load() async {
@@ -76,35 +82,40 @@ struct MessagesView: View {
     }
 }
 
+// Строка переписки (.conv): фото 48 со скруглением 14, аватарка собеседника 24 с белой обводкой, имя 14/650,
+// время 12, объявление 13/500, последнее сообщение 13, число непрочитанных — синий кружок 20.
 struct ConvRow: View {
     let c: ConvItem
     var body: some View {
         HStack(spacing: 12) {
             RemoteImage(url: API.shared.media(c.photo))
-                .frame(width: 56, height: 56)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .frame(width: 48, height: 48)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .overlay(alignment: .bottomTrailing) {
-                    if let o = c.other { Avatar(name: o.name, url: o.avatar, size: 22).overlay(Circle().strokeBorder(T.bg, lineWidth: 2)).offset(x: 4, y: 4) }
+                    if let o = c.other { Avatar(name: o.name, url: o.avatar, size: 24).overlay(Circle().strokeBorder(T.card, lineWidth: 2)).offset(x: 3, y: 3) }
                 }
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 1) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(c.other?.name ?? "Собеседник").font(.on(16, .bold)).foregroundStyle(T.text).lineLimit(1)
+                    Text(c.other?.name ?? "Собеседник").font(.on(14, .semibold)).foregroundStyle(T.text).lineLimit(1)
                     Spacer(minLength: 6)
-                    Text(Fmt.chatTime(c.updatedAt)).font(.on(12)).foregroundStyle(T.faint)
+                    Text(Fmt.chatTime(c.updatedAt)).font(.on(12)).foregroundStyle(T.muted)
                 }
-                Text(c.title ?? "").font(.on(13, .medium)).foregroundStyle(T.text2).lineLimit(1)
-                HStack(spacing: 6) {
-                    if (c.lastMine ?? 0) == 1 { Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)).foregroundStyle(T.faint) }
-                    Text(c.lastBody ?? "").font(.on(14)).foregroundStyle(T.muted).lineLimit(1)
+                Text([c.title, c.price.map { Fmt.price($0, unit: c.priceUnit) }].compactMap { $0 }.joined(separator: " · "))
+                    .font(.on(13, .medium)).foregroundStyle(T.text2).lineLimit(1)
+                HStack(spacing: 5) {
+                    if (c.lastMine ?? 0) == 1 { Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(T.muted) }
+                    Text(c.lastBody ?? "").font(.on(13)).foregroundStyle(T.muted).lineLimit(1)
                     Spacer(minLength: 6)
                     if let n = c.unread, n > 0 {
                         Text("\(n)").font(.on(12, .bold)).foregroundStyle(.white)
-                            .padding(.horizontal, 7).frame(minWidth: 22, minHeight: 22)
+                            .padding(.horizontal, 6).frame(minWidth: 20, minHeight: 20)
                             .background(Capsule().fill(T.accentFill))
                     }
                 }
             }
         }
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .contentShape(Rectangle())
         .opacity(c.blocked == true ? 0.55 : 1)
     }
 }

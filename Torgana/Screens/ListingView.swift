@@ -1,6 +1,8 @@
 import SwiftUI
 
-// Объявление: фото, цена, характеристики, описание, условия, продавец, похожие. Внизу — «Написать».
+// Объявление — как страница объявления сайта на телефоне: путь «Главная › раздел › город», фото, карточка
+// (название, избранное, поделиться, просмотры, цена, «Написать продавцу», «Предложить цену»), характеристики,
+// описание, условия, продавец и подписка, предупреждение о мошенниках, похожие.
 struct ListingView: View {
     let id: Int
     @EnvironmentObject private var app: AppState
@@ -10,36 +12,29 @@ struct ListingView: View {
     @State private var page = 0
     @State private var gallery = false
     @State private var report = false
+    @State private var offer = false
     @State private var writing = false
 
     var body: some View {
         Group {
             if let d = data { content(d) }
-            else if let error { EmptyState(icon: "exclamationmark.triangle", title: "Не открылось", text: error, button: "Повторить") { Task { await load() } } }
+            else if let error { EmptyState(title: "Не открылось", text: error, button: "Повторить") { Task { await load() } }.padding(20) }
             else { LoadingView() }
         }
-        .background(T.bg)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            if let d = data {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    ShareLink(item: API.shared.url("/l/\(d.listing.id)"), subject: Text(d.listing.title), message: Text("\(d.listing.title) — \(Fmt.price(d.listing.price, unit: d.listing.priceUnit))")) {
-                        Image(systemName: "square.and.arrow.up")
-                    }
-                    if d.listing.isOwner != true {
-                        let on = app.isFav(d.listing.id, d.listing.isFav)
-                        Button { Task { _ = await app.toggleFav(d.listing.id, current: on) } } label: {
-                            Image(systemName: on ? "heart.fill" : "heart").foregroundStyle(on ? Color(hex: 0xE5484D) : T.accent)
-                        }
-                    }
-                }
-            }
-        }
-        .hidesTabBar()
+        .sitePage()
         .task { if data == nil { await load() } }
         .refreshable { await load() }
         .fullScreenCover(isPresented: $gallery) { if let d = data { Gallery(photos: d.listing.photos ?? [], page: $page) } }
         .sheet(isPresented: $report) { ReportSheet(listingId: id) }
+        .sheet(isPresented: $offer) {
+            if let l = data?.listing {
+                PriceSheet(title: "Предложить цену", hint: "Цена продавца — \(Fmt.price(l.price, unit: l.priceUnit)). Предложение придёт ему в чат.") { sum in
+                    await app.openChat(listingId: l.id, offer: sum)
+                    return nil
+                }
+                .presentationDetents([.medium])
+            }
+        }
     }
 
     private func load() async {
@@ -56,80 +51,159 @@ struct ListingView: View {
         let l = d.listing
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                photos(l)
-                VStack(alignment: .leading, spacing: 22) {
-                    head(l)
-                    if l.status != nil && l.status != "active" { statusNote(l) }
-                    if let specs = l.specs, !specs.isEmpty { specsBlock(specs) }
-                    if let text = l.description, !text.isEmpty {
-                        block("Описание") { Text(text).font(.on(16)).foregroundStyle(T.text).lineSpacing(4).textSelection(.enabled) }
-                    }
-                    conditions(l)
-                    if let s = d.seller { sellerCard(s) }
-                    safety
-                    if l.isOwner != true && app.me != nil {
-                        Button { report = true } label: { Label("Пожаловаться", systemImage: "exclamationmark.triangle") }
-                            .buttonStyle(TButton(kind: .line, height: 48))
-                    }
-                    if let similar = d.similar, !similar.isEmpty {
-                        block("Похожие объявления") { ListingGrid(items: similar) }
-                    }
+                crumbs(l).padding(.top, 14)
+                photos(l).padding(.top, 14)
+                panel(l).padding(.top, 28)
+                if l.status != nil && l.status != "active" { statusNote(l).padding(.top, 16) }
+                if let specs = l.specs, !specs.isEmpty { specsBlock(l, specs).padding(.top, 36) }
+                if let text = l.description, !text.isEmpty {
+                    section("Описание") { Text(text).font(.on(18)).foregroundStyle(T.text).lineSpacing(6).textSelection(.enabled) }
+                        .padding(.top, 36)
                 }
-                .padding(16)
-                Color.clear.frame(height: 100)
+                conditions(l).padding(.top, 36)
+                if let s = d.seller { seller(s, own: l.isOwner == true).padding(.top, 36) }
+                fraud.padding(.top, 16)
+                if let similar = d.similar, !similar.isEmpty {
+                    section("Похожие объявления") { ListingGrid(items: similar) }.padding(.top, 36)
+                }
+            }
+            .padding(.horizontal, 20)
+            TabBarSpace()
+        }
+    }
+
+    // «Главная › Транспорт › Москва» — 14, приглушённый; каждое звено — ссылка.
+    private func crumbs(_ l: Listing) -> some View {
+        let cat = app.config?.category(l.category)
+        return HStack(spacing: 8) {
+            crumb("Главная") { nav.open(path: "/") }
+            if let cat {
+                Text("›").foregroundStyle(T.muted)
+                crumb(cat.name) { var q = SearchQuery(); q.category = cat.id; nav.push(.search(q)) }
+            }
+            if let city = l.city, !city.isEmpty {
+                Text("›").foregroundStyle(T.muted)
+                crumb(city) { var q = SearchQuery(); q.category = l.category ?? ""; q.city = city; nav.push(.search(q)) }
             }
         }
-        .overlay(alignment: .bottom) { actionBar(d) }
+        .font(.on(14))
+        .lineLimit(1)
+    }
+
+    private func crumb(_ t: String, _ go: @escaping () -> Void) -> some View {
+        Button(t, action: go).foregroundStyle(T.muted).buttonStyle(.plain)
     }
 
     private func photos(_ l: Listing) -> some View {
         let list = l.photos ?? []
-        return ZStack(alignment: .bottom) {
-            if list.isEmpty {
-                T.surface.overlay(Image(systemName: "photo").font(.system(size: 40)).foregroundStyle(T.faint))
-            } else {
-                TabView(selection: $page) {
-                    ForEach(Array(list.enumerated()), id: \.offset) { i, p in
-                        RemoteImage(url: API.shared.media(p))
-                            .clipped()
-                            .contentShape(Rectangle())
-                            .onTapGesture { gallery = true }
-                            .tag(i)
+        return Color.clear
+            .aspectRatio(4 / 3, contentMode: .fit)
+            .overlay {
+                if list.isEmpty {
+                    T.surface.overlay(Image(systemName: "photo").font(.system(size: 40)).foregroundStyle(T.faint))
+                } else {
+                    TabView(selection: $page) {
+                        ForEach(Array(list.enumerated()), id: \.offset) { i, p in
+                            RemoteImage(url: API.shared.media(p))
+                                .clipped()
+                                .contentShape(Rectangle())
+                                .onTapGesture { gallery = true }
+                                .tag(i)
+                        }
                     }
+                    .tabViewStyle(.page(indexDisplayMode: .never))
                 }
-                .tabViewStyle(.page(indexDisplayMode: .never))
+            }
+            .overlay(alignment: .bottom) {
                 if list.count > 1 {
                     Text("\(page + 1) из \(list.count)")
                         .font(.on(13, .semibold)).foregroundStyle(T.text)
                         .padding(.horizontal, 12).frame(height: 28)
                         .background(Capsule().fill(T.card.opacity(0.92)))
-                        .padding(.bottom, 14)
+                        .padding(.bottom, 12)
                 }
             }
-        }
-        .frame(height: 380)
-        .clipShape(RoundedRectangle(cornerRadius: T.rCard, style: .continuous))
-        .padding(.horizontal, 16)
-        .padding(.top, 4)
+            .background(T.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
     }
 
-    private func head(_ l: Listing) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(l.title).font(.on(24, .heavy)).foregroundStyle(T.text).fixedSize(horizontal: false, vertical: true)
+    // Карточка (.panel.panel-shadow): белая, скругление 28, обводка и мягкая тень; внутри 22×20.
+    private func panel(_ l: Listing) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top, spacing: 10) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(l.title).font(.on(24, .bold)).foregroundStyle(T.text).fixedSize(horizontal: false, vertical: true)
+                    let place = [l.metro?.name.map { "м. \($0)" }, l.city].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
+                    Text([place, Fmt.dayTime(l.createdAt)].filter { !$0.isEmpty }.joined(separator: " · ")).font(.on(14)).foregroundStyle(T.muted)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label("\(l.views ?? 0) \(Fmt.plural(l.views ?? 0, "просмотр", "просмотра", "просмотров"))", systemImage: "eye")
+                        Label("в избранном у \(l.favCount ?? 0)", systemImage: "heart")
+                    }
+                    .font(.on(14)).foregroundStyle(T.muted).labelStyle(MetaLabel())
+                }
+                Spacer(minLength: 0)
+                if l.isOwner != true {
+                    let on = app.isFav(l.id, l.isFav)
+                    Button { Task { _ = await app.toggleFav(l.id, current: on) } } label: {
+                        RoundIcon(icon: on ? "heart.fill" : "heart", tint: on ? Color(hex: 0xE5484D) : T.text)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(on ? "Убрать из избранного" : "В избранное")
+                }
+                ShareLink(item: API.shared.url("/l/\(l.id)"), subject: Text(l.title), message: Text("\(l.title) — \(Fmt.price(l.price, unit: l.priceUnit))")) {
+                    RoundIcon(icon: "square.and.arrow.up")
+                }
+                .accessibilityLabel("Поделиться")
+            }
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text(Fmt.price(l.price, unit: l.priceUnit)).font(.on(30, .heavy)).foregroundStyle(T.text)
+                Text(Fmt.price(l.price, unit: l.priceUnit)).font(.on(36, .heavy)).foregroundStyle(T.text).minimumScaleFactor(0.6).lineLimit(1)
                 if let was = l.priceWas, let p = l.price, was > p {
-                    Text(Fmt.price(was)).font(.on(16)).strikethrough().foregroundStyle(T.faint)
+                    Text(Fmt.price(was)).font(.on(17)).strikethrough().foregroundStyle(T.faint)
                 }
             }
-            let place = [l.metro?.name.map { "м. \($0)" }, l.city].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
-            Text([place, Fmt.dayTime(l.createdAt)].filter { !$0.isEmpty }.joined(separator: " · "))
-                .font(.on(14)).foregroundStyle(T.muted)
-            HStack(spacing: 16) {
-                Label("\(l.views ?? 0) \(Fmt.plural(l.views ?? 0, "просмотр", "просмотра", "просмотров"))", systemImage: "eye")
-                Label("в избранном у \(l.favCount ?? 0)", systemImage: "heart")
+            .padding(.top, 22)
+            VStack(spacing: 10) {
+                if l.isOwner == true {
+                    Button { nav.push(.edit(l.id)) } label: { Label("Редактировать", systemImage: "pencil") }
+                        .buttonStyle(TButton(kind: .dark, height: 58))
+                } else if l.status == "active" {
+                    Button { Task { writing = true; await app.openChat(listingId: l.id); writing = false } } label: {
+                        HStack(spacing: 10) {
+                            if writing { ProgressView().tint(.white) } else { Image(systemName: "message") }
+                            Text("Написать продавцу")
+                        }
+                    }
+                    .buttonStyle(TButton(kind: .accent, height: 58))
+                    .disabled(writing)
+                    if l.bargain == true {
+                        Button { if app.me == nil { app.needLogin = true } else { offer = true } } label: { Label("Предложить цену", systemImage: "tag") }
+                            .buttonStyle(TButton(kind: .soft, height: 58))
+                    }
+                    if app.me != nil {
+                        Button { report = true } label: { Label("Пожаловаться", systemImage: "flag") }
+                            .buttonStyle(TButton(kind: .line, height: 48))
+                    }
+                }
             }
-            .font(.on(13)).foregroundStyle(T.muted)
+            .padding(.top, 22)
+            VStack(alignment: .leading, spacing: 14) {
+                note("checkmark.shield", "Общайтесь в чате Торганы.", "Так переписка сохранится, а мы сможем помочь при споре.")
+                if l.delivery == true {
+                    note("truck.box", "Доставка по России.", "Продавец готов отправить товар — договоритесь о способе в чате.")
+                }
+            }
+            .padding(.top, 20)
+        }
+        .padding(.horizontal, 20).padding(.vertical, 22)
+        .background(RoundedRectangle(cornerRadius: 28, style: .continuous).fill(T.card).shadow(color: Color(hex: 0x101010).opacity(0.08), radius: 20, y: 12))
+        .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).strokeBorder(T.line, lineWidth: 1))
+    }
+
+    private func note(_ icon: String, _ bold: String, _ text: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: icon).font(.system(size: 18, weight: .regular)).foregroundStyle(T.accent).frame(width: 22)
+            (Text(bold + " ").font(.on(14, .bold)).foregroundColor(T.text) + Text(text).font(.on(14)).foregroundColor(T.text2))
+                .lineSpacing(2).fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -149,24 +223,42 @@ struct ListingView: View {
             .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(T.warnSoft))
     }
 
-    private func block<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title).font(.on(21, .heavy)).foregroundStyle(T.text)
+    private func section<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(title).font(.on(26, .bold)).foregroundStyle(T.text)
             content()
         }
     }
 
-    private func specsBlock(_ specs: [Spec]) -> some View {
-        block("Характеристики") {
-            VStack(spacing: 0) {
-                ForEach(Array(specs.enumerated()), id: \.offset) { i, s in
-                    HStack(alignment: .firstTextBaseline) {
-                        Text(s.label ?? "").font(.on(15)).foregroundStyle(T.muted)
-                        Spacer(minLength: 12)
-                        Text(s.value ?? "").font(.on(15, .medium)).foregroundStyle(T.text).multilineTextAlignment(.trailing)
+    // Характеристики: раздел › подраздел, первые четыре — плитками 2×2, остальные — строками.
+    private func specsBlock(_ l: Listing, _ specs: [Spec]) -> some View {
+        let tiles = Array(specs.prefix(4))
+        let rest = Array(specs.dropFirst(4))
+        let path = [app.config?.category(l.category)?.name, app.config?.subs(l.category).first { $0.id == l.subcategory }?.name].compactMap { $0 }
+        return section("Характеристики") {
+            if !path.isEmpty { Text(path.joined(separator: " › ")).font(.on(15)).foregroundStyle(T.muted).padding(.top, -6) }
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                ForEach(Array(tiles.enumerated()), id: \.offset) { _, s in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(s.label ?? "").font(.on(14)).foregroundStyle(T.muted).lineLimit(1)
+                        Text(s.value ?? "").font(.on(18, .bold)).foregroundStyle(T.text).lineLimit(2).minimumScaleFactor(0.8)
                     }
-                    .padding(.vertical, 11)
-                    if i < specs.count - 1 { Divider().overlay(T.line) }
+                    .frame(maxWidth: .infinity, minHeight: 82, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(T.surface))
+                }
+            }
+            if !rest.isEmpty {
+                VStack(spacing: 0) {
+                    ForEach(Array(rest.enumerated()), id: \.offset) { _, s in
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(s.label ?? "").font(.on(16)).foregroundStyle(T.muted)
+                            Spacer(minLength: 12)
+                            Text(s.value ?? "").font(.on(16, .semibold)).foregroundStyle(T.text).multilineTextAlignment(.trailing)
+                        }
+                        .padding(.vertical, 15)
+                        .overlay(alignment: .bottom) { T.line.frame(height: 1) }
+                    }
                 }
             }
         }
@@ -174,89 +266,102 @@ struct ListingView: View {
 
     private struct Cond: Identifiable { let text: String; let icon: String; let soft: Bool; var id: String { text } }
 
+    // Условия — плашки: синие (доставка, торг, обмен) и серая с городом.
     private func conditions(_ l: Listing) -> some View {
-        var tags = [Cond(text: l.delivery == true ? "Есть доставка" : "Только встреча", icon: l.delivery == true ? "shippingbox" : "person.2", soft: false)]
+        var tags: [Cond] = []
+        if l.delivery == true { tags.append(Cond(text: "Отправит по России", icon: "truck.box", soft: true)) } else { tags.append(Cond(text: "Только встреча", icon: "person.2", soft: false)) }
         if l.bargain == true { tags.append(Cond(text: "Торг уместен", icon: "tag", soft: true)) }
         if l.exchange == true { tags.append(Cond(text: "Возможен обмен", icon: "arrow.left.arrow.right", soft: true)) }
         if let c = l.city, !c.isEmpty { tags.append(Cond(text: c, icon: "mappin", soft: false)) }
-        return block("Условия") {
+        return section("Условия") {
             FlowLayout(spacing: 8) {
                 ForEach(tags) { t in
-                    Label(t.text, systemImage: t.icon)
-                        .font(.on(14, .medium))
-                        .foregroundStyle(t.soft ? T.accent : T.text)
-                        .padding(.horizontal, 12).frame(height: 34)
-                        .background(Capsule().fill(t.soft ? T.accentSoft : T.surface))
-                }
-            }
-        }
-    }
-
-    private func sellerCard(_ s: Seller) -> some View {
-        Button { nav.push(.user(s.id)) } label: {
-            HStack(spacing: 14) {
-                Avatar(name: s.name, url: s.avatar, size: 56)
-                VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 6) {
-                        Text(s.name).font(.on(17, .bold)).foregroundStyle(T.text).lineLimit(1)
-                        if s.badges?.official == true || s.badges?.shop == true {
-                            Image(systemName: "checkmark.seal.fill").foregroundStyle(T.accent).font(.system(size: 14))
+                        Image(systemName: t.icon).font(.system(size: 13, weight: .semibold))
+                        Text(t.text).font(.on(15, .semibold))
+                    }
+                    .foregroundStyle(t.soft ? T.accent : T.text)
+                    .padding(.horizontal, 14).frame(height: 40)
+                    .background(Capsule().fill(t.soft ? T.accentSoft : T.surface))
+                }
+            }
+        }
+    }
+
+    // Продавец: карточка с обводкой, под ней «Подписаться» и число подписчиков.
+    private func seller(_ s: Seller, own: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Button { nav.push(.user(s.id)) } label: {
+                HStack(spacing: 16) {
+                    Avatar(name: s.name, url: s.avatar, size: 56)
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 6) {
+                            Text(s.name).font(.on(18, .bold)).foregroundStyle(T.text).lineLimit(1)
+                            if s.badges?.official == true || s.badges?.shop == true {
+                                Image(systemName: "checkmark.seal.fill").foregroundStyle(T.accent).font(.system(size: 14))
+                            }
                         }
+                        RepLine(rep: s.rep, medal: s.badges?.first)
+                        Text("На Торгане с \(Fmt.monthYear(s.createdAt)) · \(s.activeCount ?? 0) \(Fmt.plural(s.activeCount ?? 0, "объявление", "объявления", "объявлений"))")
+                            .font(.on(14)).foregroundStyle(T.muted).fixedSize(horizontal: false, vertical: true)
                     }
-                    if let lvl = s.rep?.levelName { Text(lvl).font(.on(14, .semibold)).foregroundStyle(T.text2) }
-                    Text("На Торгане с \(Fmt.monthYear(s.createdAt)) · \(s.activeCount ?? 0) \(Fmt.plural(s.activeCount ?? 0, "объявление", "объявления", "объявлений"))")
-                        .font(.on(13)).foregroundStyle(T.muted).fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 4)
+                    Image(systemName: "chevron.right").foregroundStyle(T.text).font(.system(size: 15, weight: .semibold))
                 }
-                Spacer(minLength: 4)
-                Image(systemName: "chevron.right").foregroundStyle(T.faint).font(.system(size: 14, weight: .semibold))
+                .padding(.horizontal, 18).padding(.vertical, 22)
+                .background(RoundedRectangle(cornerRadius: 28, style: .continuous).fill(T.card))
+                .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).strokeBorder(T.line, lineWidth: 1))
             }
-            .panel(radius: 24, padding: 16)
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var safety: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "checkmark.shield").foregroundStyle(T.accent).font(.system(size: 17, weight: .semibold))
-            (Text("Мы никогда не просим ").foregroundColor(T.text2) + Text("переходить в мессенджеры, называть код из СМС или платить по ссылке.").foregroundColor(T.text2) + Text(" Если об этом просят — это мошенники.").bold().foregroundColor(T.text))
-                .font(.on(14)).lineSpacing(2)
-        }
-        .padding(16)
-        .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(T.surface))
-    }
-
-    private func actionBar(_ d: ListingResponse) -> some View {
-        let l = d.listing
-        return HStack(spacing: 10) {
-            if l.isOwner == true {
-                Button("Редактировать") { nav.push(.edit(l.id)) }.buttonStyle(TButton(kind: .dark))
-            } else if l.status == "active" {
-                Button { Task { await write(l.id) } } label: {
-                    HStack(spacing: 8) {
-                        if writing { ProgressView().tint(.white) } else { Image(systemName: "message.fill") }
-                        Text("Написать")
-                    }
+            .buttonStyle(.plain)
+            if !own {
+                Button { Task { if let r = await app.follow(s.id, !(data?.seller?.following ?? false)) { data?.seller?.following = r.following; if let n = r.followers { data?.seller?.followers = n } } } } label: {
+                    Label(s.following == true ? "Вы подписаны" : "Подписаться", systemImage: s.following == true ? "bell.fill" : "bell")
                 }
-                .buttonStyle(TButton(kind: .accent))
-                .disabled(writing)
+                .buttonStyle(TButton(kind: .soft, height: 52))
+                (Text("\(s.followers ?? 0)").bold().foregroundColor(T.text) + Text(" \(Fmt.plural(s.followers ?? 0, "подписчик", "подписчика", "подписчиков")) · узнают о новых объявлениях первыми").foregroundColor(T.muted))
+                    .font(.on(14))
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 12)
-        .padding(.bottom, 8)
-        .background(.ultraThinMaterial)
     }
 
-    /// Чат с продавцом: создаём (или находим) переписку и открываем её.
-    private func write(_ listingId: Int) async {
-        guard app.me != nil else { app.needLogin = true; return }
-        writing = true
-        defer { writing = false }
-        do {
-            let r: IdResult = try await API.shared.post("/api/conversations", ["listingId": listingId])
-            nav.push(.chat(r.id))
-        } catch {
-            app.show((error as? APIError)?.message ?? "Не получилось", bad: true)
+    private var fraud: some View {
+        (Text("Мы никогда не просим ").font(.on(15, .bold)).foregroundColor(T.text)
+         + Text("переходить в мессенджеры, называть код из СМС или платить по ссылке. Если вас об этом просят — это мошенники.").font(.on(15)).foregroundColor(T.text2))
+            .lineSpacing(3)
+            .padding(.horizontal, 22).padding(.vertical, 20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 24, style: .continuous).fill(T.surface))
+    }
+}
+
+/// Значок 16 и текст через 6 — строки «просмотров» и «в избранном» сайта.
+struct MetaLabel: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 6) {
+            configuration.icon.font(.system(size: 13, weight: .regular)).frame(width: 16)
+            configuration.title
+        }
+    }
+}
+
+/// Уровень продавца («Новичок», «Надёжный продавец») и медаль «Один из первых» — строками, как на сайте.
+struct RepLine: View {
+    let rep: Rep?
+    let medal: FirstMedal?
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            if let lvl = rep?.levelName {
+                HStack(spacing: 6) {
+                    Image(systemName: "hexagon.fill").font(.system(size: 13)).foregroundStyle(T.faint)
+                    Text(lvl).font(.on(14, .heavy)).foregroundStyle(T.text)
+                }
+            }
+            if medal?.no != nil {
+                HStack(spacing: 6) {
+                    Image(systemName: "rosette").font(.system(size: 13, weight: .semibold)).foregroundStyle(T.accent)
+                    Text(medal?.form == "f" ? "Одна из первых" : "Один из первых").font(.on(14, .heavy)).foregroundStyle(T.accent)
+                }
+            }
         }
     }
 }

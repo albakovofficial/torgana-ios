@@ -77,23 +77,49 @@ struct SearchView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                chips
-                if let total = feed.total, !feed.items.isEmpty {
-                    Text("Найдено \(Fmt.number(total)) \(Fmt.plural(total, "объявление", "объявления", "объявлений"))")
-                        .font(.on(14)).foregroundStyle(T.muted)
+            VStack(alignment: .leading, spacing: 0) {
+                SearchCapsule(text: $text, focus: $focused, city: query.city, onCity: { cityPicker = true }, onGo: { query.q = text.trimmingCharacters(in: .whitespaces) })
+                    .padding(.top, 4)
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Text(title).font(.on(24, .bold)).foregroundStyle(T.text).lineLimit(2)
+                    if let total = feed.total {
+                        Text("\(Fmt.number(total)) \(Fmt.plural(total, "объявление", "объявления", "объявлений"))").font(.on(14)).foregroundStyle(T.muted)
+                    }
                 }
+                .padding(.top, 16)
+                HStack(spacing: 6) {
+                    SoftPill(action: { filters = true }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "slider.horizontal.3").font(.system(size: 14, weight: .semibold))
+                            Text("Фильтры")
+                            if query.filterCount > 0 {
+                                Text("\(query.filterCount)").font(.on(11, .bold)).foregroundStyle(.white)
+                                    .frame(minWidth: 18, minHeight: 18).background(Capsule().fill(T.accentFill))
+                            }
+                        }
+                    }
+                    Menu {
+                        Picker("Сортировка", selection: $query.sort) {
+                            Text("Сначала новые").tag("")
+                            Text("Сначала дешевле").tag("cheap")
+                            Text("Сначала дороже").tag("expensive")
+                        }
+                    } label: {
+                        Text(query.sort == "cheap" ? "Сначала дешевле" : query.sort == "expensive" ? "Сначала дороже" : "Сначала новые")
+                            .font(.on(14, .semibold)).foregroundStyle(T.text)
+                            .frame(maxWidth: .infinity).frame(height: 40)
+                            .background(Capsule().fill(T.surface))
+                    }
+                }
+                .padding(.top, 12)
                 FeedView(feed: feed, emptyTitle: "Ничего не нашлось", emptyText: "Попробуйте другие слова, уберите фильтры или выберите всю Россию.")
+                    .padding(.top, 20)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
+            .padding(.horizontal, 20)
             TabBarSpace()
         }
         .scrollDismissesKeyboard(.immediately)
-        .background(T.bg)
-        .safeAreaInset(edge: .top, spacing: 0) { searchField }
-        .navigationTitle(title)
-        .navigationBarTitleDisplayMode(.inline)
+        .sitePage()
         .refreshable { await feed.reload(query) }
         .task(id: query) { await feed.reload(query) }
         .onAppear { if query.focus { focused = true; query.focus = false } }
@@ -101,80 +127,11 @@ struct SearchView: View {
         .sheet(isPresented: $cityPicker) { CityPicker(city: $query.city) }
     }
 
+    /// Как на сайте: «запрос» в кавычках-ёлочках, иначе раздел.
     private var title: String {
+        if !query.q.isEmpty { return "«\(query.q)»" }
         if !query.sub.isEmpty, let s = app.config?.subs(query.category).first(where: { $0.id == query.sub }) { return s.name }
-        return app.config?.category(query.category)?.name ?? "Поиск"
-    }
-
-    private var searchField: some View {
-        HStack(spacing: 10) {
-            HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass").font(.system(size: 16, weight: .semibold)).foregroundStyle(T.muted)
-                TextField("Что ищете?", text: $text)
-                    .font(.on(17))
-                    .focused($focused)
-                    .submitLabel(.search)
-                    .onSubmit { query.q = text.trimmingCharacters(in: .whitespaces) }
-                if !text.isEmpty {
-                    Button { text = ""; query.q = "" } label: {
-                        Image(systemName: "xmark.circle.fill").foregroundStyle(T.faint)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 16).frame(height: 48)
-            .background(Capsule().fill(T.surface))
-            Button { filters = true } label: {
-                Image(systemName: "slider.horizontal.3")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(query.filterCount > 0 ? .white : T.text)
-                    .frame(width: 48, height: 48)
-                    .background(Circle().fill(query.filterCount > 0 ? AnyShapeStyle(T.grad) : AnyShapeStyle(T.surface)))
-                    .overlay(alignment: .topTrailing) {
-                        if query.filterCount > 0 {
-                            Text("\(query.filterCount)").font(.on(11, .bold)).foregroundStyle(T.accent)
-                                .frame(width: 18, height: 18).background(Circle().fill(T.card)).offset(x: 2, y: -2)
-                        }
-                    }
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Фильтры")
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(T.bg)
-    }
-
-    private var chips: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                Chip(title: query.city.isEmpty ? "Вся Россия" : query.city, icon: "mappin.and.ellipse", on: !query.city.isEmpty) { cityPicker = true }
-                Menu {
-                    Picker("Сортировка", selection: $query.sort) {
-                        Text("Сначала новые").tag("")
-                        Text("Сначала дешевле").tag("cheap")
-                        Text("Сначала дороже").tag("expensive")
-                    }
-                } label: {
-                    chipLabel(query.sort == "cheap" ? "Дешевле" : query.sort == "expensive" ? "Дороже" : "Новые", icon: "arrow.up.arrow.down", on: !query.sort.isEmpty)
-                }
-                Chip(title: "С доставкой", icon: "shippingbox", on: query.delivery) { query.delivery.toggle() }
-                Chip(title: "Надёжные продавцы", icon: "checkmark.shield", on: query.trusted) { query.trusted.toggle() }
-            }
-            .padding(.horizontal, 16)
-        }
-        .padding(.horizontal, -16)
-    }
-
-    private func chipLabel(_ title: String, icon: String, on: Bool) -> some View {
-        HStack(spacing: 7) {
-            Image(systemName: icon).font(.system(size: 14, weight: .semibold))
-            Text(title).font(.on(15, .semibold)).lineLimit(1)
-        }
-        .padding(.horizontal, 16).frame(height: 42)
-        .foregroundStyle(on ? T.accent : T.text)
-        .background(Capsule().fill(on ? T.accentSoft : T.surface))
-        .overlay(Capsule().strokeBorder(on ? T.accent : .clear, lineWidth: 1.5))
+        return app.config?.category(query.category)?.name ?? "Все объявления"
     }
 }
 

@@ -10,26 +10,24 @@ struct HomeView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                header
-                searchBar
-                categories
-                HStack(alignment: .firstTextBaseline) {
-                    Text(title).font(.on(24, .heavy)).foregroundStyle(T.text).lineLimit(2)
+            VStack(alignment: .leading, spacing: 0) {
+                searchBar.padding(.top, 4)
+                categories.padding(.top, 14)
+                HStack(alignment: .center) {
+                    Text(title).font(.on(22, .bold)).foregroundStyle(T.text).lineLimit(1)
                     Spacer()
                     Button("Смотреть все") { nav.push(.search(query)) }
-                        .font(.on(15, .semibold)).foregroundStyle(T.text)
+                        .font(.on(15, .semibold)).foregroundStyle(T.text).frame(height: 44)
                 }
-                .padding(.top, 6)
-                FeedView(feed: feed)
+                .padding(.top, 16)
+                FeedView(feed: feed).padding(.top, 14)
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 20)
             TabBarSpace()
         }
-        .background(T.bg)
         .refreshable { await feed.reload(query) }
         .task(id: query) { await feed.reload(query) }
-        .toolbar(.hidden, for: .navigationBar)
+        .sitePage()
         .sheet(isPresented: $cityPicker) { CityPicker(city: $app.city) }
     }
 
@@ -40,47 +38,14 @@ struct HomeView: View {
         return q
     }
 
-    private var title: String {
-        let name = app.config?.category(category)?.name ?? "Свежие объявления"
-        return app.city.isEmpty ? name : "\(name) · \(app.city)"
-    }
-
-    private var header: some View {
-        HStack(spacing: 10) {
-            Image("Logo").resizable().frame(width: 40, height: 40).clipShape(Circle())
-            Text("торгана").font(.on(26, .heavy)).foregroundStyle(T.text)
-            Spacer()
-            Button { cityPicker = true } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "mappin.and.ellipse").font(.system(size: 14, weight: .semibold)).foregroundStyle(T.accent)
-                    Text(app.city.isEmpty ? "Вся Россия" : app.city).font(.on(15, .semibold)).lineLimit(1)
-                }
-                .foregroundStyle(T.text)
-                .padding(.horizontal, 14).frame(height: 40)
-                .background(Capsule().fill(T.surface))
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.top, 6)
-    }
+    private var title: String { app.config?.category(category)?.name ?? "Свежие объявления" }
 
     private var searchBar: some View {
-        Button {
+        SearchCapsule(city: app.city, onField: {
             var q = query
             q.focus = true
             nav.push(.search(q))
-        } label: {
-            HStack(spacing: 12) {
-                Image(systemName: "magnifyingglass").font(.system(size: 18, weight: .semibold)).foregroundStyle(T.muted)
-                Text("Поиск по объявлениям").font(.on(17)).foregroundStyle(T.faint)
-                Spacer()
-            }
-            .padding(.horizontal, 18).frame(height: 56)
-            .background(Capsule().fill(T.card))
-            .overlay(Capsule().strokeBorder(T.line, lineWidth: 1.5))
-            .shadow(color: Color(hex: 0x2E3C8C).opacity(0.06), radius: 14, y: 6)
-        }
-        .buttonStyle(.plain)
+        }, onCity: { cityPicker = true }, onGo: { nav.push(.search(query)) })
     }
 
     private var categories: some View {
@@ -93,9 +58,9 @@ struct HomeView: View {
                     }
                 }
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 20)
         }
-        .padding(.horizontal, -16)
+        .padding(.horizontal, -20)
     }
 }
 
@@ -153,8 +118,8 @@ struct FeedView: View {
     var body: some View {
         if feed.items.isEmpty {
             if feed.loading { LoadingView() }
-            else if let e = feed.error { EmptyState(icon: "wifi.slash", title: "Не загрузилось", text: e) }
-            else { EmptyState(icon: "magnifyingglass", title: emptyTitle, text: emptyText).panel() }
+            else if let e = feed.error { EmptyState(title: "Не загрузилось", text: e) }
+            else { EmptyState(title: emptyTitle, text: emptyText) }
         } else {
             ListingGrid(items: feed.items) { feed.more() }
             if feed.loading { ProgressView().tint(T.accent).frame(maxWidth: .infinity).padding(.vertical, 20) }

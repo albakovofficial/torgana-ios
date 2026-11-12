@@ -10,6 +10,8 @@ enum Route: Hashable {
     case myListings
     case notices
     case edit(Int)
+    case user(Int)
+    case doc(String)
     case web(String)
 
     /// /l/123-velosiped → .listing(123); /search?q=… и /c/… → поиск; остальное — страница сайта.
@@ -20,6 +22,8 @@ enum Route: Hashable {
         if let m = path.firstMatch(of: #/^\/l\/(\d+)/#), let id = Int(m.1) { return .listing(id) }
         if path == "/messages/support" { return .support }
         if let m = path.firstMatch(of: #/^\/edit\/(\d+)/#), let id = Int(m.1) { return .edit(id) }
+        if let m = path.firstMatch(of: #/^\/u\/(\d+)/#), let id = Int(m.1) { return .user(id) }
+        if let m = path.firstMatch(of: #/^\/page\/(rules|terms|privacy|consent|contacts)$/#) { return .doc(String(m.1)) }
         if let m = path.firstMatch(of: #/^\/messages\/(\d+)/#), let id = Int(m.1) { return .chat(id) }
         if path == "/search" { return .search(SearchQuery(params: items)) }
         if let m = path.firstMatch(of: #/^\/c\/([a-z]+)(?:\/([a-z0-9_-]+))?/#) {
@@ -133,6 +137,8 @@ struct RouteView: View {
         case .myListings: MyListingsView()
         case .notices: NoticesView()
         case .edit(let id): EditorView(editId: id).hidesTabBar()
+        case .user(let id): UserView(id: id)
+        case .doc(let slug): DocView(slug: slug)
         case .web(let path): WebScreen(path: path)
         }
     }

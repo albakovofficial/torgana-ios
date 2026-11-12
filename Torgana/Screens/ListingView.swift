@@ -193,7 +193,7 @@ struct ListingView: View {
     }
 
     private func sellerCard(_ s: Seller) -> some View {
-        Button { nav.push(.web("/u/\(s.id)")) } label: {
+        Button { nav.push(.user(s.id)) } label: {
             HStack(spacing: 14) {
                 Avatar(name: s.name, url: s.avatar, size: 56)
                 VStack(alignment: .leading, spacing: 4) {

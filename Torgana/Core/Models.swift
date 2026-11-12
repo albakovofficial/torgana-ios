@@ -326,3 +326,22 @@ struct Notice: Codable, Identifiable, Hashable {
 }
 
 struct NoticeList: Codable { let items: [Notice]; let unread: Int? }
+
+// MARK: - Страница продавца
+
+struct PublicUser: Codable, Hashable {
+    let id: Int
+    let name: String
+    let city: String?
+    let avatar: String?
+    let createdAt: Double?
+    let activeCount: Int?
+    let rep: Rep?
+    let badges: Badges?
+    var followers: Int?
+    var following: Bool?
+    var block: String?
+}
+
+struct UserResponse: Codable { let user: PublicUser }
+struct FollowResult: Codable { let following: Bool; let followers: Int? }

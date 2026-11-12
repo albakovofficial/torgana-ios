@@ -131,7 +131,7 @@ struct ChatView: View {
         if let o = data?.other, convId != nil {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    Button { nav.push(.web("/u/\(o.id)")) } label: { Label("Профиль собеседника", systemImage: "person") }
+                    Button { nav.push(.user(o.id)) } label: { Label("Профиль собеседника", systemImage: "person") }
                     if let id = convId { Button { nav.push(.web("/messages/\(id)")) } label: { Label("Сделка и отзыв", systemImage: "hand.thumbsup") } }
                     Button(role: data?.block == "me" ? nil : .destructive) { confirmBlock = true } label: {
                         Label(data?.block == "me" ? "Разблокировать" : "Заблокировать", systemImage: "hand.raised")

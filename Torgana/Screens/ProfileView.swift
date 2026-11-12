@@ -41,7 +41,7 @@ struct ProfileView: View {
             Button("Создать профиль") { app.needLogin = true }.buttonStyle(TButton(kind: .soft))
             VStack(spacing: 0) {
                 row("questionmark.circle", "Помощь") { nav.push(.web("/page/help")) }
-                row("doc.text", "Правила и документы") { nav.push(.web("/page/rules")) }
+                row("doc.text", "Правила и документы") { nav.push(.doc("rules")) }
             }
             .panel(radius: 24, padding: 6)
         }

@@ -80,7 +80,7 @@ final class API {
 }
 
 // Любой JSON — для ответов, где нужно одно-два поля.
-enum JSONValue: Codable {
+enum JSONValue: Codable, Hashable {
     case null, bool(Bool), number(Double), string(String), array([JSONValue]), object([String: JSONValue])
     init(from decoder: Decoder) throws {
         let c = try decoder.singleValueContainer()

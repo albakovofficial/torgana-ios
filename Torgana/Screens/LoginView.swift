@@ -166,7 +166,6 @@ struct LoginView: View {
         Haptics.play("success")
         await withCheckedContinuation { c in CookieSync.shared.pushToWeb { c.resume() } }
         await app.refreshMe()
-        WebTabs.shared.reloadAll()
     }
 }
 

@@ -143,10 +143,7 @@ struct ProfileView: View {
     private func logout() async {
         _ = try? await API.shared.post("/api/auth/logout")
         for c in HTTPCookieStorage.shared.cookies ?? [] where c.name == "tg_sid" { HTTPCookieStorage.shared.deleteCookie(c) }
-        CookieSync.shared.pushToWeb {
-            Task { await app.refreshMe() }
-            WebTabs.shared.reloadAll()
-        }
+        CookieSync.shared.pushToWeb { Task { await app.refreshMe() } }
         app.favs = [:]
     }
 }
@@ -187,7 +184,7 @@ struct MyListingsView: View {
                         }
                     }
                     .contextMenu {
-                        Button { nav.push(.web("/edit/\(l.id)")) } label: { Label("Редактировать", systemImage: "pencil") }
+                        Button { nav.push(.edit(l.id)) } label: { Label("Редактировать", systemImage: "pencil") }
                         if l.status == "active" {
                             Button { Task { await setStatus(l, "sold") } } label: { Label("Продано", systemImage: "checkmark.circle") }
                             Button { Task { await setStatus(l, "archived") } } label: { Label("Снять с публикации", systemImage: "archivebox") }

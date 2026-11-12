@@ -155,22 +155,9 @@ final class WebPage: NSObject, ObservableObject, WKNavigationDelegate, WKUIDeleg
         web.load(URLRequest(url: url))
     }
 
-    /// Переход внутри уже открытого сайта — без перезагрузки (сайт слушает popstate).
-    func go(path: String) {
-        guard web.url != nil, !failed else { load(path: path); return }
-        let js = "history.pushState(null, '', \(jsString(path))); window.dispatchEvent(new PopStateEvent('popstate'));"
-        web.evaluateJavaScript(js, completionHandler: nil)
-    }
-
     func retry() {
         failed = false
         if web.url != nil { web.reload() } else if let u = lastURL { web.load(URLRequest(url: u)) }
-    }
-
-    private func jsString(_ s: String) -> String {
-        let data = (try? JSONSerialization.data(withJSONObject: [s])) ?? Data("[\"/\"]".utf8)
-        let arr = String(data: data, encoding: .utf8) ?? "[\"/\"]"
-        return String(arr.dropFirst().dropLast())
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
@@ -226,36 +213,6 @@ final class WebPage: NSObject, ObservableObject, WKNavigationDelegate, WKUIDeleg
     }
 }
 
-// Вкладки, которые пока — сайт: «Подать», «Сообщения», «Профиль». Страница создаётся при первом открытии вкладки.
-@MainActor
-final class WebTabs: ObservableObject {
-    static let shared = WebTabs()
-    @Published private(set) var pages: [Tab: WebPage] = [:]
-
-    static func home(_ tab: Tab) -> String {
-        switch tab {
-        case .post: return "/new"
-        case .messages: return "/messages"
-        default: return "/profile"
-        }
-    }
-
-    func page(_ tab: Tab) -> WebPage {
-        if let p = pages[tab] { return p }
-        let p = WebPage(path: WebTabs.home(tab))
-        pages[tab] = p
-        return p
-    }
-
-    func go(_ tab: Tab, _ path: String) { page(tab).go(path: path) }
-
-    /// Повторное нажатие на вкладку — к её началу.
-    func reset(_ tab: Tab) { pages[tab]?.go(path: WebTabs.home(tab)) }
-
-    /// Вошли или вышли — страницы сайта перечитываем.
-    func reloadAll() { pages.values.forEach { $0.web.reload() } }
-}
-
 struct WebHostView: UIViewRepresentable {
     let web: WKWebView
     func makeUIView(context: Context) -> UIView {
@@ -287,42 +244,6 @@ struct WebPageView: View {
             if page.loading { ProgressView().tint(T.accent) }
             if page.failed { OfflineView { page.retry() } }
         }
-    }
-}
-
-struct WebTabHost: View {
-    let tab: Tab
-    @EnvironmentObject private var nav: Nav
-    @ObservedObject private var tabs = WebTabs.shared
-
-    var body: some View {
-        Group {
-            if let page = tabs.pages[tab] {
-                WebTabPage(page: page, tab: tab)
-            } else {
-                T.bg.ignoresSafeArea()
-            }
-        }
-        .onAppear { if nav.tab == tab { _ = tabs.page(tab) } }
-        .onChange(of: nav.tab) { _, t in if t == tab { _ = tabs.page(tab) } }
-    }
-}
-
-// Страница во вкладке — над нижним меню, чтобы поле ввода и кнопки сайта не прятались под ним.
-// Открыта переписка — нижнее меню прячем (как сайт), назад к списку — стрелкой в шапке чата.
-struct WebTabPage: View {
-    @ObservedObject var page: WebPage
-    let tab: Tab
-    @EnvironmentObject private var nav: Nav
-
-    private var chatOpen: Bool { tab == .messages && page.path.range(of: "^/messages/[^/?]+", options: .regularExpression) != nil }
-
-    var body: some View {
-        WebPageView(page: page)
-            .padding(.bottom, chatOpen ? 0 : 84)
-            .background(T.bg.ignoresSafeArea())
-            .onChange(of: chatOpen) { _, open in if nav.tab == tab { nav.webBarHidden = open } }
-            .onChange(of: nav.tab) { _, t in if t == tab { nav.webBarHidden = chatOpen } else if nav.webBarHidden { nav.webBarHidden = false } }
     }
 }
 

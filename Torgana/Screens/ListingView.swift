@@ -229,7 +229,7 @@ struct ListingView: View {
         let l = d.listing
         return HStack(spacing: 10) {
             if l.isOwner == true {
-                Button("Редактировать") { nav.push(.web("/edit/\(l.id)")) }.buttonStyle(TButton(kind: .dark))
+                Button("Редактировать") { nav.push(.edit(l.id)) }.buttonStyle(TButton(kind: .dark))
             } else if l.status == "active" {
                 Button { Task { await write(l.id) } } label: {
                     HStack(spacing: 8) {

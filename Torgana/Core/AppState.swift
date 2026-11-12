@@ -24,11 +24,8 @@ final class AppState: ObservableObject {
     func start() {
         guard !started else { return }
         started = true
-        // Вошли или вышли (на странице сайта или в родном экране) — обновляем профиль и страницы сайта во вкладках.
-        CookieSync.shared.onChange = { [weak self] in
-            Task { await self?.refreshMe() }
-            WebTabs.shared.reloadAll()
-        }
+        // Вошли или вышли (на странице сайта или в родном экране) — обновляем профиль.
+        CookieSync.shared.onChange = { [weak self] in Task { await self?.refreshMe() } }
         CookieSync.shared.start()
         Task {
             await loadConfig()

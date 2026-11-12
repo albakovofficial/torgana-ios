@@ -11,10 +11,15 @@ struct Category: Codable, Identifiable, Hashable {
 struct FieldDef: Codable, Hashable {
     let key: String
     let label: String
-    let type: String          // select | number | text | bool
+    let type: String          // select | number | text
     let options: [String]?
     let unit: String?
     let popular: [String]?
+    let req: Bool?
+    let placeholder: String?
+    let min: Double?
+    let max: Double?
+    let step: Double?
 }
 
 struct Subcategory: Codable, Identifiable, Hashable {
@@ -174,6 +179,7 @@ struct Listing: Codable, Identifiable, Hashable {
     let isOwner: Bool?
     let specs: [Spec]?
     let rejectReason: String?
+    let attrs: [String: JSONValue]?
 }
 
 struct Seller: Codable, Hashable {

@@ -9,6 +9,7 @@ enum Route: Hashable {
     case support
     case myListings
     case notices
+    case edit(Int)
     case web(String)
 
     /// /l/123-velosiped → .listing(123); /search?q=… и /c/… → поиск; остальное — страница сайта.
@@ -18,6 +19,7 @@ enum Route: Hashable {
         let items = Dictionary((comps.queryItems ?? []).compactMap { q in q.value.map { (q.name, $0) } }, uniquingKeysWith: { a, _ in a })
         if let m = path.firstMatch(of: #/^\/l\/(\d+)/#), let id = Int(m.1) { return .listing(id) }
         if path == "/messages/support" { return .support }
+        if let m = path.firstMatch(of: #/^\/edit\/(\d+)/#), let id = Int(m.1) { return .edit(id) }
         if let m = path.firstMatch(of: #/^\/messages\/(\d+)/#), let id = Int(m.1) { return .chat(id) }
         if path == "/search" { return .search(SearchQuery(params: items)) }
         if let m = path.firstMatch(of: #/^\/c\/([a-z]+)(?:\/([a-z0-9_-]+))?/#) {
@@ -40,9 +42,7 @@ final class Nav: ObservableObject {
     @Published var paths: [Tab: NavigationPath] = [:]
     /// Экраны со своей нижней панелью (объявление) прячут нижнее меню.
     @Published var barHidden = 0
-    /// Во вкладке-сайте открыта переписка — у неё своё поле ввода внизу.
-    @Published var webBarHidden = false
-    var barVisible: Bool { barHidden <= 0 && !webBarHidden }
+    var barVisible: Bool { barHidden <= 0 }
 
     func path(_ tab: Tab) -> Binding<NavigationPath> {
         Binding(get: { self.paths[tab] ?? NavigationPath() }, set: { self.paths[tab] = $0 })
@@ -60,7 +60,7 @@ final class Nav: ObservableObject {
         switch clean.split(separator: "?").first.map(String.init) ?? clean {
         case "/": tab = .home; paths[.home] = NavigationPath(); return
         case "/favorites": tab = .favorites; paths[.favorites] = NavigationPath(); return
-        case "/new": tab = .post; return
+        case "/new": tab = .post; paths[.post] = NavigationPath(); return
         case "/profile": tab = .profile; paths[.profile] = NavigationPath(); return
         case "/profile/listings": tab = .profile; paths[.profile] = NavigationPath([Route.myListings]); return
         default: break
@@ -79,7 +79,7 @@ final class Nav: ObservableObject {
 
     func reselect(_ t: Tab) {
         if tab == t {
-            if t == .post { WebTabs.shared.reset(t) } else { paths[t] = NavigationPath() }
+            paths[t] = NavigationPath()
         } else { tab = t }
         Haptics.play("selection")
     }
@@ -95,7 +95,7 @@ struct MainView: View {
             ZStack {
                 stack(.home) { HomeView() }
                 stack(.favorites) { FavoritesView() }
-                WebTabHost(tab: .post).opacity(nav.tab == .post ? 1 : 0).allowsHitTesting(nav.tab == .post)
+                stack(.post) { EditorView() }
                 stack(.messages) { MessagesView() }
                 stack(.profile) { ProfileView() }
             }
@@ -132,6 +132,7 @@ struct RouteView: View {
         case .support: ChatView(kind: .support)
         case .myListings: MyListingsView()
         case .notices: NoticesView()
+        case .edit(let id): EditorView(editId: id).hidesTabBar()
         case .web(let path): WebScreen(path: path)
         }
     }

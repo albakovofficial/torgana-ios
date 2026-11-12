@@ -53,10 +53,11 @@ const json = (res, data, status = 200) => { res.writeHead(status, { 'Content-Typ
 http.createServer((req, res) => {
   const u = new URL(req.url, 'http://x');
   const p = u.pathname;
+  if (!p.startsWith('/demo/')) console.log(new Date().toISOString().slice(11, 23), req.method, req.url);
   if (p.startsWith('/demo/')) { const f = path.join(DIR, path.basename(p)); if (fs.existsSync(f)) { res.writeHead(200, { 'Content-Type': 'image/jpeg' }); return fs.createReadStream(f).pipe(res); } }
   if (p === '/api/config') return json(res, config);
   if (p === '/api/me') return json(res, { user: me, unread: 2, notices: 2, fresh: { price: 1, follow: 0 } });
-  if (p === '/api/listings') { const q = (u.searchParams.get('q') || '').toLowerCase(); const cat = u.searchParams.get('category'); const list = items.filter((x) => (!cat || x.category === cat) && (!q || q === 'а' || x.title.toLowerCase().includes(q))); return json(res, { items: list, total: list.length }); }
+  if (p === '/api/listings') { const q = (u.searchParams.get('q') || '').toLowerCase(); const cat = u.searchParams.get('category'); const list = items.filter((x) => (!u.searchParams.get('user') || x.seller.id === Number(u.searchParams.get('user'))) && (!cat || x.category === cat) && (!q || q === 'а' || x.title.toLowerCase().includes(q))); return json(res, { items: list, total: list.length }); }
   let m = /^\/api\/listings\/(\d+)$/.exec(p);
   if (m) { const c = items.find((x) => x.id === Number(m[1])) || items[0]; return json(res, listing(c)); }
   if (p === '/api/favorites') return json(res, { items: items.filter((x) => x.isFav) });
@@ -68,6 +69,9 @@ http.createServer((req, res) => {
       other: { id: 2, name: 'Анна Смирнова', avatar: null }, block: null, offers: [{ id: 1, price: 85000, listingPrice: 89990, status: 'pending', bySeller: false, parentId: null, createdAt: now - 1.5 * H }],
       readUpTo: 3, typing: true, messages: msgs.filter((x) => x.id > after) });
   }
+  m = /^\/api\/users\/(\d+)$/.exec(p);
+  if (m) return json(res, { user: { ...listing(items[0]).seller, id: Number(m[1]), emailVerified: true, block: null }, sections: [], pinned: [] });
+  if (p === '/api/pages/rules') return json(res, { title: 'Правила размещения', html: '<p>Все объявления на Торгане проходят модерацию. Объявление публикуется, если оно соответствует правилам.</p><h2>Запрещено</h2><ul><li>оружие и боеприпасы;</li><li>лекарства по рецепту;</li><li>поддельные товары.</li></ul><p>Подробнее — в <a href="/page/terms">пользовательском соглашении</a>.</p>' });
   if (p === '/api/support') return json(res, { messages: [] });
   if (p === '/api/my/listings') return json(res, { items: items.slice(0, 3).map((x, i) => ({ ...x, status: ['active', 'pending', 'active'][i], views: 40 + i * 13, favCount: i * 2, rejectReason: '' })) });
   if (p === '/api/notices') return json(res, { items: notices, unread: 2 });

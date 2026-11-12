@@ -70,7 +70,7 @@ jobs:
       - name: Снимки экранов (светлая и тёмная тема)
         run: |
           APP=$(ls -d build/Build/Products/Debug-iphonesimulator/*.app | head -1)
-          node ci/demo-server.js > demo.log 2>&1 &
+          node ci/demo-server.js >> demo.log 2>&1 &
           xcrun simctl boot "$UDID" || true
           xcrun simctl bootstatus "$UDID" -b
           xcrun simctl status_bar "$UDID" override --time 9:41 --batteryState charged --batteryLevel 100 --cellularBars 4 || true
@@ -79,15 +79,17 @@ jobs:
           n=0
           for mode in light dark; do
             xcrun simctl ui "$UDID" appearance $mode
-            for r in "/" "/l/5" "/search?q=%D0%B0" "/favorites" "/messages" "/messages/1" "/profile" "/profile/listings"; do
+            for r in "/" "/l/5" "/search?q=%D0%B0" "/favorites" "/messages" "/messages/1" "/profile" "/profile/listings" "/new" "/u/2" "/page/rules"; do
               n=$((n+1))
               name=$(printf "%s-%02d-%s" "$mode" "$n" "$(echo "$r" | tr -c 'a-z0-9' '-' | sed 's/^-*//;s/-*$//')")
+              echo "$(date -u +%H:%M:%S.000) === $mode $r" >> demo.log
               xcrun simctl launch --terminate-running-process "$UDID" ru.torgana.app -base http://127.0.0.1:8787 -route "$r" > /dev/null
-              sleep 7
+              sleep 10
               xcrun simctl io "$UDID" screenshot "shots/${name:-home}.png" > /dev/null
             done
           done
           ls shots
+          echo "--- запросы к демо-серверу ---"; cat demo.log
 
       - name: Снимки — в ветку shots
         run: |

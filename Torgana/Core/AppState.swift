@@ -27,13 +27,13 @@ final class AppState: ObservableObject {
         // Вошли или вышли (на странице сайта или в родном экране) — обновляем профиль.
         CookieSync.shared.onChange = { [weak self] in Task { await self?.refreshMe() } }
         CookieSync.shared.start()
+        #if DEBUG
+        // Снимки экранов: запуск с -route /l/5 сразу открывает нужный экран (данные он грузит сам).
+        if let r = UserDefaults.standard.string(forKey: "route"), !r.isEmpty { Nav.shared.open(path: r) }
+        #endif
         Task {
             await loadConfig()
             await refreshMe()
-            #if DEBUG
-            // Снимки экранов: запуск с -route /l/5 открывает нужный экран.
-            if let r = UserDefaults.standard.string(forKey: "route"), !r.isEmpty { Nav.shared.open(path: r) }
-            #endif
         }
         // Счётчики и «кто вошёл» — раз в 30 секунд, как у сайта.
         Task {

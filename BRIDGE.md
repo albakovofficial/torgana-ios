@@ -4,7 +4,8 @@
 
 - в User-Agent есть `TorganaApp/1.0.0 (iOS)`;
 - у `<html>` есть классы `in-app` и `in-app-ios` (ставятся до загрузки стилей);
-- есть объект `window.TorganaApp` (`platform`, `version`, `post(msg)`).
+- есть объект `window.TorganaApp` (`platform`, `version`, `native`, `push`, `post(msg)`). `push: 'app'` — push ведёт приложение
+  (адрес устройства сайту не передаётся, сайт только спрашивает и просит — команды `push.*` ниже).
 
 Сообщения принимаются **только со страниц torgana.ru** — чужие рамки и страницы входа Яндекс/VK звать приложение не могут.
 
@@ -14,8 +15,10 @@
 |---|---|---|
 | `share` | `url`, `text` | системное окно «Поделиться». `url` может быть путём (`/l/123`) |
 | `haptic` | `style`: `light` `medium` `heavy` `selection` `success` `warning` `error` | виброотклик |
-| `push.request` | — | спросить разрешение на уведомления; ответ — `push.status`, затем `push.token` |
-| `push.status` | — | узнать, разрешены ли уведомления; ответ — `push.status` |
+| `push.state` | — | включены ли push на этом iPhone; ответ — `push.state` |
+| `push.on` | — | включить: запрос разрешения iPhone, адрес устройства, `POST /api/push/apns`; ответ — `push.on` |
+| `push.off` | — | выключить на этом iPhone (`POST /api/push/apns/off`, больше не отправлять адрес); ответ — `push.off` |
+| `push.signout` | — | перед выходом из аккаунта (пока сессия жива): убрать адрес у этого человека; ответ — `push.signout` |
 | `auth.apple` | `nonce` (необязательно, лучше дать с сервера) | окно «Войти с Apple»; ответ — `auth.apple` или `auth.apple.error` |
 | `badge` | `count` | число на значке приложения (0 — убрать) |
 | `open.external` | `url` | открыть ссылку в Safari / звонилке / почте |
@@ -28,13 +31,8 @@
 window.addEventListener('torgana-native', (e) => {
   const m = e.detail;
   switch (m.type) {
-    case 'push.token':      // { token, env: 'production' | 'development' }
-      // приходит после каждой загрузки страницы — отправлять на сервер, только если пользователь вошёл
-      // и токен изменился (хранить последний в localStorage)
-      fetch('/api/push/apns', { method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ token: m.token, env: m.env }) });
-      break;
-    case 'push.status':     // { status: 'granted' | 'denied' | 'default' }
+    case 'push.state': case 'push.on': case 'push.off': case 'push.signout':
+      // { ok, error?, perm: 'granted' | 'denied' | 'default', on } — on: push включены на этом iPhone для вошедшего
       break;
     case 'auth.apple':      // { identityToken, authorizationCode?, nonce, user, name?, email? }
       fetch('/api/auth/apple', { method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -43,8 +41,6 @@ window.addEventListener('torgana-native', (e) => {
     case 'auth.apple.error': // { code: 'canceled' | 'failed' | 'no_token', message? }
       break;
     case 'share.result':    // { completed, activity }
-      break;
-    case 'push.error':      // { message } — не удалось получить адрес устройства
       break;
   }
 });

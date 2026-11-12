@@ -93,6 +93,7 @@ final class Nav: ObservableObject {
 struct MainView: View {
     @EnvironmentObject private var app: AppState
     @EnvironmentObject private var nav: Nav
+    @ObservedObject private var push = PushManager.shared
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -112,6 +113,17 @@ struct MainView: View {
         .modifier(ToastHost())
         .sheet(isPresented: $app.needLogin) {
             NavigationStack { LoginView() }
+        }
+        // Один раз после входа, как на сайте; потом — системный запрос iPhone.
+        .alert("Включить уведомления?", isPresented: $push.ask) {
+            Button("Включить") {
+                Task {
+                    do { try await push.turnOn(); app.show("Уведомления включены") } catch { app.show(error.localizedDescription, bad: true) }
+                }
+            }
+            Button("Не сейчас", role: .cancel) {}
+        } message: {
+            Text("Сообщим, когда объявление опубликуют, напишут в чате или подешевеет товар из избранного. Выключить можно в разделе «Уведомления» профиля.")
         }
     }
 

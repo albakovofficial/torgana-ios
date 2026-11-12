@@ -48,7 +48,7 @@ final class WebController: NSObject {
     // embedded: страница внутри родного приложения — шапку, подвал и нижнее меню сайта прячем (есть свои),
     // а ссылки на уже родные экраны (объявление, поиск, главная, избранное) открываем в приложении.
     private static func bootScript(embedded: Bool) -> String {
-        let app = "window.TorganaApp = { platform: 'ios', version: '" + appVersion + "', native: " + (embedded ? "true" : "false") + ", "
+        let app = "window.TorganaApp = { platform: 'ios', version: '" + appVersion + "', native: " + (embedded ? "true" : "false") + ", push: 'app', "
             + "post: function (msg) { try { window.webkit.messageHandlers.torgana.postMessage(msg); } catch (e) {} } };"
         let classes = embedded ? "'in-app', 'in-app-ios', 'in-app-native'" : "'in-app', 'in-app-ios'"
         let css = "#header, #footer, #bottom-nav, .cookie-bar { display: none !important; } "
@@ -169,7 +169,6 @@ final class WebPage: NSObject, ObservableObject, WKNavigationDelegate, WKUIDeleg
         loading = false
         failed = false
         title = webView.title ?? ""
-        PushManager.shared.resendToken()   // сайт загрузился — отдаём ему адрес устройства для push
         CookieSync.shared.pullFromWeb()     // вошли или вышли на странице сайта — родные экраны узнают сразу
     }
 

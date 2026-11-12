@@ -141,6 +141,7 @@ struct ProfileView: View {
     }
 
     private func logout() async {
+        await PushManager.shared.forget()
         _ = try? await API.shared.post("/api/auth/logout")
         for c in HTTPCookieStorage.shared.cookies ?? [] where c.name == "tg_sid" { HTTPCookieStorage.shared.deleteCookie(c) }
         CookieSync.shared.pushToWeb { Task { await app.refreshMe() } }
@@ -256,6 +257,7 @@ struct NoticesView: View {
 
     var body: some View {
         List {
+            PushCard().listRowSeparator(.hidden).listRowBackground(T.bg)
             if loading && items.isEmpty { LoadingView().listRowSeparator(.hidden).listRowBackground(T.bg) }
             else if items.isEmpty { EmptyState(icon: "bell", title: "Уведомлений нет", text: "Здесь появятся решения модерации, снижение цен в избранном и новое у продавцов из подписок.").listRowSeparator(.hidden).listRowBackground(T.bg) }
             ForEach(items) { n in
@@ -309,5 +311,69 @@ struct NoticesView: View {
     private func load() async {
         if let r: NoticeList = try? await API.shared.get("/api/notices") { items = r.items }
         loading = false
+    }
+}
+
+// Push на этом iPhone: включить, проверить, выключить. То же, что на странице настроек сайта (через PushManager).
+struct PushCard: View {
+    @EnvironmentObject private var app: AppState
+    @ObservedObject private var push = PushManager.shared
+    @Environment(\.scenePhase) private var phase
+    @State private var perm: PushManager.Permission = .granted
+    @State private var busy = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                Image(systemName: push.on ? "bell.badge.fill" : "bell.slash")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(push.on ? .white : T.accent)
+                    .frame(width: 44, height: 44)
+                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(push.on ? AnyShapeStyle(T.grad) : AnyShapeStyle(T.accentSoft)))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(push.on ? "Push включены на этом iPhone" : perm == .denied ? "Уведомления запрещены" : "Push выключены")
+                        .font(.on(16, .bold)).foregroundStyle(T.text)
+                    Text(push.on ? "Сообщения, модерация, снижение цен и новое в подписках"
+                         : perm == .denied ? "Разрешите их в Настройках iPhone → Торгана → Уведомления"
+                         : "Сообщим о новых сообщениях, решениях модерации и снижении цен")
+                        .font(.on(13)).foregroundStyle(T.muted).fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+            HStack(spacing: 10) {
+                if push.on {
+                    Button("Проверить") { run("Отправили проверочное уведомление") { try await push.test() } }
+                        .buttonStyle(TButton(kind: .soft, height: 42))
+                    Button("Выключить") { run("Уведомления на этом iPhone выключены") { await push.turnOff() } }
+                        .buttonStyle(TButton(kind: .line, height: 42))
+                } else if perm == .denied {
+                    Button("Открыть настройки") { if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) } }
+                        .buttonStyle(TButton(kind: .accent, height: 42))
+                } else {
+                    Button { run("Уведомления включены") { try await push.turnOn() } } label: { Label("Включить уведомления", systemImage: "bell") }
+                        .buttonStyle(TButton(kind: .accent, height: 42))
+                }
+            }
+            .disabled(busy)
+            .opacity(busy ? 0.6 : 1)
+        }
+        .panel(radius: 24, padding: 16)
+        .padding(.vertical, 4)
+        .task { await reload() }
+        .onChange(of: phase) { _, p in if p == .active { Task { await reload() } } }   // вернулись из Настроек iPhone
+    }
+
+    private func reload() async {
+        perm = await push.permission()
+        await push.refresh()
+    }
+
+    private func run(_ ok: String, _ work: @escaping () async throws -> Void) {
+        busy = true
+        Task {
+            do { try await work(); app.show(ok) } catch { app.show(error.localizedDescription, bad: true) }
+            await reload()
+            busy = false
+        }
     }
 }

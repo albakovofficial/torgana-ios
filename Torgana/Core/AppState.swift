@@ -50,7 +50,9 @@ final class AppState: ObservableObject {
 
     func refreshMe() async {
         guard let r: MeResponse = try? await API.shared.get("/api/me") else { return }
+        let changed = me?.id != r.user?.id
         me = r.user
+        if changed { Task { await PushManager.shared.sync(); await PushManager.shared.askOnce() } }
         unread = r.unread ?? 0
         notices = r.notices ?? 0
         if city.isEmpty, let c = r.user?.city, !c.isEmpty { city = c }

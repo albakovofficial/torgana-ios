@@ -18,6 +18,6 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     }
 
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
-        WebController.shared.send(["type": "push.error", "message": error.localizedDescription])
+        PushManager.shared.didFail(error)
     }
 }

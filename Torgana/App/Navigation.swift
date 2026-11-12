@@ -170,9 +170,12 @@ struct TabBar: View {
     @EnvironmentObject private var app: AppState
 
     var body: some View {
+        // Кнопки — своей ширины (открытая — с подписью), между ними поровну свободного места, как justify-content сайта.
         HStack(spacing: 0) {
             item(.home, "house", "Главная")
+            Spacer(minLength: 2)
             item(.favorites, "heart", "Избранное")
+            Spacer(minLength: 2)
             Button { nav.reselect(.post) } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 21, weight: .semibold))
@@ -182,9 +185,10 @@ struct TabBar: View {
                     .shadow(color: Color(hex: 0x5B5FD6).opacity(0.35), radius: 10, y: 8)
             }
             .buttonStyle(.plain)
-            .frame(maxWidth: .infinity)
             .accessibilityLabel("Подать объявление")
+            Spacer(minLength: 2)
             item(.messages, "message", "Сообщения", badge: app.unread)
+            Spacer(minLength: 2)
             item(.profile, "person", "Профиль")
         }
         .padding(.horizontal, 8)
@@ -207,11 +211,10 @@ struct TabBar: View {
             }
             .foregroundStyle(on ? Color.dyn(0x2F53B5, 0x8EA9F7) : T.text)
             .padding(.leading, on ? 12 : 0).padding(.trailing, on ? 16 : 0)
-            .frame(height: 46)
-            .frame(minWidth: 46)
+            .frame(minWidth: 46, minHeight: 46)
             .background(Capsule().fill(on ? T.accentFill.opacity(0.12) : .clear))
-            .frame(maxWidth: on ? nil : .infinity)
-            .contentShape(Rectangle())
+            .fixedSize()
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)

@@ -202,7 +202,7 @@ struct SearchCapsule: View {
             }
             Button(action: onCity) {
                 HStack(spacing: 5) {
-                    Image(systemName: "mappin").font(.system(size: 12, weight: .semibold)).foregroundStyle(T.accent)
+                    Image(systemName: "mappin.and.ellipse").font(.system(size: 13, weight: .medium)).foregroundStyle(T.accent)
                     Text(city.isEmpty ? "Вся Россия" : city).font(.on(13.5, .semibold)).foregroundStyle(T.text).lineLimit(1)
                 }
                 .padding(.horizontal, 12).frame(height: 36)

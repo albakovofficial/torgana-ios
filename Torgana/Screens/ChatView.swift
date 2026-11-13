@@ -6,7 +6,8 @@ import UniformTypeIdentifiers
 
 // Переписка (вариант 1, «мессенджер», выбран владельцем 13 ноября): на весь экран — шапка с собеседником и «печатает…»,
 // под ней полоса с товаром; свои сообщения — фирменный градиент, чужие — серые; предложение цены — компактная карточка;
-// внизу «+» (фото, своя цена), поле и отправка. Новые сообщения — раз в 2,5 секунды, пока чат на экране (как сайт).
+// внизу «+» — плитки над полем (фото до 10 сразу, видео, файл, своя цена; вариант B), поле и отправка.
+// Пока вложение загружается — оно уже в ленте: превью, кольцо загрузки, крестик «отменить». Новые сообщения — раз в 2,5 секунды, пока чат на экране (как сайт).
 struct ChatView: View {
     enum Kind: Hashable { case conv(Int), support }
     let kind: Kind
@@ -23,7 +24,7 @@ struct ChatView: View {
     @State private var text = ""
     @State private var replyTo: Message?
     @State private var sending = false
-    @State private var photoItem: PhotosPickerItem?
+    @State private var photoItems: [PhotosPickerItem] = []
     @State private var offerSheet = false
     @State private var counterFor: Offer?
     @State private var lastTypingPing = Date.distantPast
@@ -38,7 +39,10 @@ struct ChatView: View {
     @State private var videoPicker = false
     @State private var videoItem: PhotosPickerItem?
     @State private var fileImporter = false
-    @State private var uploading: String?          // «Загружаем видео… 40%» над полем
+    @State private var attachOpen = false          // плитки «Фото, Видео, Файл, Своя цена» над «+»
+    @State private var pending: PendingUpload?     // вложение, которое сейчас загружается (в ленте)
+    @State private var uploadTask: Task<Void, Never>?
+    @State private var uploadID = UUID()
     @State private var editing: Message?           // правка своего сообщения
     @State private var editsSince: Double = 0      // время сервера прошлого опроса — правки после него
 
@@ -58,6 +62,9 @@ struct ChatView: View {
                             }
                             bubble(m).id(m.id)
                         }
+                        if let p = pending {
+                            PendingBubble(upload: p) { uploadTask?.cancel(); pending = nil }.id("pending")
+                        }
                         if typing {
                             HStack { TypingDots(); Spacer() }.id("typing")
                         }
@@ -70,8 +77,25 @@ struct ChatView: View {
                 .onChange(of: messages.last?.id) { _, id in
                     if let id { withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(id, anchor: .bottom) } }
                 }
+                .onChange(of: pending == nil) { _, done in
+                    if !done { withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("pending", anchor: .bottom) } }
+                }
                 .onChange(of: focused) { _, f in
+                    if f { attachOpen = false }
                     if f, let id = messages.last?.id { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { withAnimation { proxy.scrollTo(id, anchor: .bottom) } } }
+                }
+            }
+            .overlay(alignment: .bottomLeading) {
+                ZStack(alignment: .bottomLeading) {
+                    if attachOpen {
+                        Color.black.opacity(0.12).contentShape(Rectangle())
+                            .onTapGesture { withAnimation(.spring(duration: 0.25)) { attachOpen = false } }
+                            .transition(.opacity)
+                    }
+                    if attachOpen {
+                        attachMenu.padding(10)
+                            .transition(.scale(scale: 0.85, anchor: .bottomLeading).combined(with: .opacity))
+                    }
                 }
             }
             composer
@@ -79,12 +103,16 @@ struct ChatView: View {
         .background(T.bg.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
         .hidesTabBar()
-        .photosPicker(isPresented: $photoPicker, selection: $photoItem, matching: .images)
+        .photosPicker(isPresented: $photoPicker, selection: $photoItems, maxSelectionCount: 10, selectionBehavior: .ordered, matching: .images)
         .photosPicker(isPresented: $videoPicker, selection: $videoItem, matching: .videos)
-        .onChange(of: videoItem) { _, item in if let item { Task { await sendVideo(item) } } }
+        .onChange(of: videoItem) { _, item in if let item { startUpload { await sendVideo(item) } } }
+        .onChange(of: photoItems) { _, items in if !items.isEmpty { startUpload { await sendPhotos(items) } } }
         .fileImporter(isPresented: $fileImporter, allowedContentTypes: Uploader.fileTypes) { result in
-            if case .success(let url) = result { Task { await sendFile(url) } }
+            if case .success(let url) = result { startUpload { await sendFile(url) } }
         }
+        #if DEBUG
+        .onAppear { if UserDefaults.standard.bool(forKey: "attach") { attachOpen = true } } // снимок экрана с плитками
+        #endif
         .task(id: phase) {
             guard phase == .active else { return }
             while !Task.isCancelled {
@@ -92,7 +120,6 @@ struct ChatView: View {
                 try? await Task.sleep(nanoseconds: 2_500_000_000)
             }
         }
-        .onChange(of: photoItem) { _, item in if let item { Task { await sendPhoto(item) } } }
         .onChange(of: text) { _, t in pingTyping(t) }
         .sheet(isPresented: $offerSheet) {
             PriceSheet(title: "Предложить цену", hint: data?.listing?.price.map { "Сейчас — \(Fmt.price($0))" } ?? "") { price in await makeOffer(price) }
@@ -222,7 +249,7 @@ struct ChatView: View {
                             Capsule().fill(m.mine ? Color.white.opacity(0.85) : T.accent).frame(width: 3)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(r.mine == true ? "Вы" : (data?.other?.name ?? "Собеседник")).font(.on(12, .semibold)).foregroundStyle(m.mine ? .white : T.accent)
-                                Text((r.body ?? "").isEmpty ? "Фото" : r.body!).font(.on(13)).foregroundStyle(m.mine ? Color.white.opacity(0.85) : T.text2).lineLimit(2)
+                                Text(!(r.body ?? "").isEmpty ? r.body! : r.video == true ? "Видео" : r.file == true ? "Файл" : "Фото").font(.on(13)).foregroundStyle(m.mine ? Color.white.opacity(0.85) : T.text2).lineLimit(2)
                             }
                         }
                         .fixedSize(horizontal: false, vertical: true)
@@ -297,14 +324,6 @@ struct ChatView: View {
                     .padding(.top, 10)
                     .overlay(alignment: .top) { T.line.frame(height: 1) }
                 }
-                if let up = uploading {
-                    HStack(spacing: 10) {
-                        ProgressView().tint(T.accent)
-                        Text(up).font(.on(13, .semibold)).foregroundStyle(T.text2)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 16).padding(.top, 10)
-                }
                 if let e = editing {
                     HStack(spacing: 10) {
                         Image(systemName: "pencil").font(.system(size: 15, weight: .semibold)).foregroundStyle(T.accent)
@@ -322,7 +341,7 @@ struct ChatView: View {
                         Image(systemName: "arrowshape.turn.up.left.fill").foregroundStyle(T.accent)
                         VStack(alignment: .leading, spacing: 1) {
                             Text(r.mine ? "Ответ себе" : "Ответ \(data?.other?.name ?? "")").font(.on(12, .semibold)).foregroundStyle(T.accent)
-                            Text((r.body ?? "").isEmpty ? "Фото" : r.body!).font(.on(13)).foregroundStyle(T.text2).lineLimit(1)
+                            Text(!(r.body ?? "").isEmpty ? r.body! : r.video != nil ? "Видео" : r.file.map { "📎 " + $0.name } ?? "Фото").font(.on(13)).foregroundStyle(T.text2).lineLimit(1)
                         }
                         Spacer()
                         Button { replyTo = nil } label: { Image(systemName: "xmark").foregroundStyle(T.muted) }.buttonStyle(.plain)
@@ -330,17 +349,19 @@ struct ChatView: View {
                     .padding(.horizontal, 16).padding(.top, 10)
                 }
                 HStack(alignment: .bottom, spacing: 8) {
-                    Menu {
-                        Button { photoPicker = true } label: { Label("Фото", systemImage: "photo") }
-                        Button { videoPicker = true } label: { Label("Видео до минуты", systemImage: "video") }
-                        Button { fileImporter = true } label: { Label("Файл", systemImage: "doc") }
-                        if canOffer { Button { offerSheet = true } label: { Label("Предложить свою цену", systemImage: "tag") } }
+                    Button {
+                        focused = false
+                        withAnimation(.spring(duration: 0.25)) { attachOpen.toggle() }
                     } label: {
-                        Image(systemName: "plus").font(.system(size: 22, weight: .regular)).foregroundStyle(T.muted)
+                        Image(systemName: "plus").font(.system(size: 22, weight: attachOpen ? .semibold : .regular))
+                            .foregroundStyle(attachOpen ? T.accent : T.muted)
+                            .rotationEffect(.degrees(attachOpen ? 45 : 0))
                             .frame(width: 44, height: 44)
                     }
-                    .disabled(uploading != nil || editing != nil)
-                    .accessibilityLabel("Фото, видео, файл")
+                    .buttonStyle(.plain)
+                    .disabled(pending != nil || editing != nil)
+                    .opacity(pending != nil || editing != nil ? 0.4 : 1)
+                    .accessibilityLabel(attachOpen ? "Закрыть" : "Фото, видео, файл")
                     TextField("Сообщение", text: $text, axis: .vertical)
                         .font(.on(16))
                         .lineLimit(1...5)
@@ -363,7 +384,43 @@ struct ChatView: View {
         .background(T.bg)
     }
 
-    private var canSend: Bool { !sending && uploading == nil && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    // MARK: плитки над «+» (вариант B): значок с градиентом, название, подсказка
+    private var attachMenu: some View {
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
+            attachTile("photo.on.rectangle.angled", [0x4C86E0, 0x3D67D0], "Фото", "до 10 сразу") { photoPicker = true }
+            attachTile("video.fill", [0x7B7FF0, 0x5B3DF5], "Видео", "до минуты, покажите товар в деле") { videoPicker = true }
+            attachTile("doc.fill", [0x5BA7E6, 0x2D78C4], "Файл", "PDF, Word, Excel, ZIP до 10 МБ") { fileImporter = true }
+            if canOffer { attachTile("tag.fill", [0xF6C453, 0xE08A1E], "Своя цена", "продавец ответит в чате") { offerSheet = true } }
+        }
+        .padding(10)
+        .frame(width: 300)
+        .background(RoundedRectangle(cornerRadius: 26, style: .continuous).fill(T.card))
+        .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).stroke(T.line))
+        .shadow(color: Color(hex: 0x141E50).opacity(0.22), radius: 25, y: 16)
+    }
+
+    private func attachTile(_ icon: String, _ colors: [UInt32], _ title: String, _ hint: String, _ action: @escaping () -> Void) -> some View {
+        Button {
+            withAnimation(.spring(duration: 0.2)) { attachOpen = false }
+            action()
+        } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                Image(systemName: icon).font(.system(size: 18, weight: .semibold)).foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
+                    .background(RoundedRectangle(cornerRadius: 13, style: .continuous).fill(LinearGradient(colors: colors.map { Color(hex: $0) }, startPoint: .topLeading, endPoint: .bottomTrailing)))
+                Text(title).font(.on(15, .bold)).foregroundStyle(T.text)
+                Text(hint).font(.on(12)).foregroundStyle(T.muted).lineSpacing(1).multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, minHeight: 116, alignment: .topLeading)
+            .padding(12)
+            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(T.surface))
+            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var canSend: Bool { !sending && pending == nil && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     /// Своё сообщение с текстом, не предложение цены, не старше 48 часов (как на сервере).
     private func canEdit(_ m: Message) -> Bool {
@@ -449,44 +506,82 @@ struct ChatView: View {
         merge([r.message])
     }
 
-    private func sendPhoto(_ item: PhotosPickerItem) async {
-        defer { photoItem = nil }
-        guard let data = try? await item.loadTransferable(type: Data.self), let img = UIImage(data: data) else { return }
-        sending = true
-        defer { sending = false }
-        do {
-            let file = try await Uploader.upload(img)
-            try await send(["body": .string(""), "photo": .string(file)])
-        } catch {
-            app.show((error as? APIError)?.message ?? "Фото не отправилось", bad: true)
+    /// Одна загрузка за раз; крестик на превью в ленте отменяет её (Task.cancel → запрос прерывается).
+    private func startUpload(_ op: @escaping () async -> Void) {
+        uploadTask?.cancel()
+        let id = UUID()
+        uploadID = id
+        uploadTask = Task { await op(); if uploadID == id { pending = nil; uploadTask = nil } }
+    }
+
+    private func failed(_ error: Error, _ fallback: String) {
+        if Task.isCancelled || error is CancellationError || (error as? URLError)?.code == .cancelled { return }
+        app.show((error as? APIError)?.message ?? fallback, bad: true)
+    }
+
+    /// Фото — до 10 сразу, по очереди, в том порядке, в каком выбраны.
+    private func sendPhotos(_ items: [PhotosPickerItem]) async {
+        defer { photoItems = [] }
+        for (i, item) in items.enumerated() {
+            guard !Task.isCancelled else { return }
+            guard let data = try? await item.loadTransferable(type: Data.self), let img = UIImage(data: data) else { continue }
+            pending = PendingUpload(kind: .photo, preview: img.resized(maxSide: 480), note: items.count > 1 ? "Фото \(i + 1) из \(items.count)" : "Загружается")
+            do {
+                let file = try await Uploader.upload(img)
+                try Task.checkCancellation()
+                try await send(["body": .string(""), "photo": .string(file)])
+                replyTo = nil
+            } catch {
+                failed(error, "Фото не отправилось"); return
+            }
         }
+        Haptics.play("light")
     }
 
     private func sendVideo(_ item: PhotosPickerItem) async {
         defer { videoItem = nil }
-        uploading = "Готовим видео…"
-        defer { uploading = nil }
-        guard let movie = try? await item.loadTransferable(type: Movie.self) else { app.show("Не удалось открыть видео", bad: true); return }
+        pending = PendingUpload(kind: .video, note: "Готовим видео…")
+        guard let movie = try? await item.loadTransferable(type: Movie.self) else {
+            if !Task.isCancelled { app.show("Не удалось открыть видео", bad: true) }
+            return
+        }
         defer { try? FileManager.default.removeItem(at: movie.url) }
+        let gen = AVAssetImageGenerator(asset: AVURLAsset(url: movie.url))
+        gen.appliesPreferredTrackTransform = true
+        gen.maximumSize = CGSize(width: 600, height: 600)
+        let poster = (try? await gen.image(at: CMTime(seconds: 0.1, preferredTimescale: 600)).image).map { UIImage(cgImage: $0) }
+        pending = PendingUpload(kind: .video, preview: poster, progress: 0, note: "Загружается · 0%")
         do {
-            let file = try await Uploader.video(movie.url) { p in Task { @MainActor in uploading = "Загружаем видео… \(Int(p * 100))%" } }
-            uploading = "Отправляем…"
+            let file = try await Uploader.video(movie.url) { p in
+                Task { @MainActor in
+                    guard pending?.kind == .video else { return }
+                    pending?.progress = p
+                    pending?.note = "Загружается · \(Int(p * 100))%"
+                }
+            }
+            try Task.checkCancellation()
+            pending?.note = "Отправляем…"
             try await send(["body": .string(""), "video": .string(file)])
+            replyTo = nil
             Haptics.play("light")
         } catch {
-            app.show((error as? APIError)?.message ?? "Видео не отправилось", bad: true)
+            failed(error, "Видео не отправилось")
         }
     }
 
     private func sendFile(_ url: URL) async {
-        uploading = "Загружаем файл…"
-        defer { uploading = nil }
+        let scoped = url.startAccessingSecurityScopedResource()
+        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        if scoped { url.stopAccessingSecurityScopedResource() }
+        pending = PendingUpload(kind: .file, name: url.lastPathComponent, size: size, note: "Загружается")
         do {
             let f = try await Uploader.file(url)
+            try Task.checkCancellation()
             try await send(["body": .string(""), "file": .string(f.file)])
+            replyTo = nil
             Haptics.play("light")
         } catch {
-            app.show((error as? APIError)?.message ?? "Файл не отправился", bad: true)
+            failed(error, "Файл не отправился")
         }
     }
 
@@ -736,6 +831,7 @@ enum Uploader {
         let start: VideoStart = try await API.shared.post("/api/videos", VideoStartBody(name: name, type: name.hasSuffix("mp4") ? "video/mp4" : "video/quicktime", size: data.count, duration: seconds))
         var offset = 0
         while offset < data.count {
+            try Task.checkCancellation()
             let end = min(offset + start.chunk, data.count)
             let r: VideoPart = try await API.shared.upload("PUT", "/api/videos/\(start.file)", query: ["offset": String(offset)], data: data.subdata(in: offset..<end))
             if r.ready == true { break }
@@ -777,6 +873,7 @@ struct Movie: Transferable {
 struct VideoBubble: View {
     let url: URL
     @State private var poster: UIImage?
+    @State private var seconds: Double?
     @State private var playing = false
 
     var body: some View {
@@ -786,6 +883,9 @@ struct VideoBubble: View {
                 .frame(width: 52, height: 52).background(Circle().fill(.black.opacity(0.45)))
         }
         .frame(width: 220, height: 260)
+        .overlay(alignment: .bottomLeading) {
+            if let seconds { MediaPill(icon: "video.fill", text: Fmt.duration(seconds)).padding(10) }
+        }
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .contentShape(Rectangle())
         .onTapGesture { playing = true }
@@ -794,6 +894,7 @@ struct VideoBubble: View {
             gen.appliesPreferredTrackTransform = true
             gen.maximumSize = CGSize(width: 600, height: 600)
             if let cg = try? await gen.image(at: CMTime(seconds: 0.1, preferredTimescale: 600)).image { poster = UIImage(cgImage: cg) }
+            if let d = try? await gen.asset.load(.duration).seconds, d.isFinite, d > 0 { seconds = d }
         }
         .fullScreenCover(isPresented: $playing) { VideoScreen(url: url) }
         .accessibilityLabel("Видео")
@@ -830,33 +931,18 @@ struct FileBubble: View {
     var body: some View {
         Button { Task { await open() } } label: {
             HStack(spacing: 10) {
-                ZStack {
-                    if loading { ProgressView().tint(mine ? T.accent : .white) }
-                    else { Image(systemName: icon).font(.system(size: 17, weight: .semibold)).foregroundStyle(mine ? T.accent : .white) }
-                }
-                .frame(width: 42, height: 42)
-                .background(Circle().fill(mine ? AnyShapeStyle(Color.white) : AnyShapeStyle(T.grad)))
+                DocIcon(name: file.name)
+                    .overlay { if loading { ProgressView().tint(.white) } }
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(file.name).font(.on(15, .semibold)).foregroundStyle(mine ? .white : T.text).lineLimit(2).multilineTextAlignment(.leading)
-                    Text("\(ext.uppercased()) · \(Fmt.bytes(file.size))").font(.on(12)).foregroundStyle(mine ? Color.white.opacity(0.8) : T.muted)
+                    Text(file.name).font(.on(15, .bold)).foregroundStyle(mine ? .white : T.text).lineLimit(2).multilineTextAlignment(.leading)
+                    Text(Fmt.bytes(file.size) + (mine ? "" : " · Нажмите, чтобы открыть")).font(.on(12)).foregroundStyle(mine ? Color.white.opacity(0.8) : T.muted)
                 }
             }
-            .frame(maxWidth: 240, alignment: .leading)
+            .frame(maxWidth: 250, alignment: .leading)
         }
         .buttonStyle(.plain)
         .quickLookPreview($local)
         .accessibilityLabel("Файл \(file.name)")
-    }
-
-    private var ext: String { (file.name as NSString).pathExtension.lowercased() }
-    private var icon: String {
-        switch ext {
-        case "pdf": return "doc.richtext.fill"
-        case "xls", "xlsx", "ods", "csv": return "tablecells.fill"
-        case "ppt", "pptx", "odp": return "rectangle.on.rectangle.angled.fill"
-        case "zip": return "doc.zipper"
-        default: return "doc.text.fill"
-        }
     }
 
     private func open() async {
@@ -871,7 +957,137 @@ struct FileBubble: View {
     }
 }
 
+/// Значок документа: цветной лист с загнутым углом и типом (PDF — красный, Word — синий, Excel — зелёный, PowerPoint — оранжевый, ZIP — фиолетовый).
+struct DocIcon: View {
+    let name: String
+    private var ext: String { (name as NSString).pathExtension.lowercased() }
+    private var colors: [UInt32] {
+        switch ext {
+        case "pdf": return [0xF06A5D, 0xD23F33]
+        case "xls", "xlsx", "ods", "csv": return [0x4CC38A, 0x1E9A62]
+        case "ppt", "pptx", "odp": return [0xF6A453, 0xE0721E]
+        case "zip": return [0x9A8CF2, 0x6A55DE]
+        default: return [0x5C8DF0, 0x2F5FD0]
+        }
+    }
+    private var label: String {
+        let l = ["docx": "DOC", "xlsx": "XLS", "pptx": "PPT"][ext] ?? String(ext.uppercased().prefix(4))
+        return l.isEmpty ? "FILE" : l
+    }
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .fill(LinearGradient(colors: colors.map { Color(hex: $0) }, startPoint: .topLeading, endPoint: .bottomTrailing))
+            .overlay(alignment: .topTrailing) {
+                UnevenRoundedRectangle(bottomLeadingRadius: 6, style: .continuous).fill(.white.opacity(0.35)).frame(width: 14, height: 14)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(alignment: .bottom) {
+                Text(label).font(.system(size: 10, weight: .heavy)).kerning(0.3).foregroundStyle(.white).padding(.bottom, 7)
+            }
+            .frame(width: 44, height: 52)
+            .accessibilityHidden(true)
+    }
+}
+
+/// Плашка на превью: «▶ 0:24», «Загружается · 60%».
+struct MediaPill: View {
+    var icon: String?
+    let text: String
+    var body: some View {
+        HStack(spacing: 4) {
+            if let icon { Image(systemName: icon).font(.system(size: 10, weight: .bold)) }
+            Text(text).font(.on(11, .bold)).monospacedDigit()
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 8).frame(height: 22)
+        .background(Capsule().fill(.black.opacity(0.5)))
+    }
+}
+
+// MARK: - Загрузка вложения: уже в ленте, с кольцом и крестиком «отменить»
+struct PendingUpload {
+    enum Kind { case photo, video, file }
+    let kind: Kind
+    var preview: UIImage?
+    var name = ""
+    var size = 0
+    var progress: Double?          // nil — сколько осталось, неизвестно (кольцо крутится)
+    var note = ""
+}
+
+struct PendingBubble: View {
+    let upload: PendingUpload
+    let cancel: () -> Void
+
+    var body: some View {
+        HStack {
+            Spacer(minLength: 56)
+            Group {
+                if upload.kind == .file {
+                    HStack(spacing: 11) {
+                        DocIcon(name: upload.name)
+                            .overlay { Color.black.opacity(0.25).clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous)) }
+                            .overlay { UploadRing(progress: upload.progress, size: 34, action: cancel) }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(upload.name).font(.on(15, .bold)).foregroundStyle(.white).lineLimit(2)
+                            Text((upload.size > 0 ? Fmt.bytes(upload.size) + " · " : "") + upload.note).font(.on(12)).foregroundStyle(.white.opacity(0.8))
+                        }
+                    }
+                    .frame(maxWidth: 250, alignment: .leading)
+                    .padding(10)
+                } else {
+                    ZStack {
+                        if let p = upload.preview { Image(uiImage: p).resizable().scaledToFill() } else { Color.black.opacity(0.6) }
+                        Color.black.opacity(0.35)
+                        UploadRing(progress: upload.progress, size: 58, action: cancel)
+                    }
+                    .frame(width: 220, height: upload.kind == .video ? 260 : 220)
+                    .overlay(alignment: .bottomLeading) { MediaPill(icon: upload.kind == .video ? "video.fill" : nil, text: upload.note).padding(10) }
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .padding(6)
+                }
+            }
+            .background(UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 20, bottomTrailingRadius: 6, topTrailingRadius: 20, style: .continuous).fill(T.grad))
+        }
+        .transition(.opacity)
+    }
+}
+
+/// Кольцо загрузки с крестиком посередине; нажатие — отменить.
+struct UploadRing: View {
+    let progress: Double?
+    let size: CGFloat
+    let action: () -> Void
+    @State private var spin = false
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Circle().stroke(.white.opacity(0.35), lineWidth: size > 40 ? 4 : 3)
+                Circle().trim(from: 0, to: max(0.04, min(progress ?? 0.28, 1)))
+                    .stroke(.white, style: StrokeStyle(lineWidth: size > 40 ? 4 : 3, lineCap: .round))
+                    .rotationEffect(.degrees(progress == nil && spin ? 270 : -90))
+                    .animation(progress == nil ? .linear(duration: 0.9).repeatForever(autoreverses: false) : .easeOut(duration: 0.2), value: spin)
+                    .animation(.easeOut(duration: 0.2), value: progress)
+                Image(systemName: "xmark").font(.system(size: size * 0.28, weight: .bold)).foregroundStyle(.white)
+            }
+            .frame(width: size, height: size)
+            .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .onAppear { spin = true }
+        .accessibilityLabel("Отменить загрузку")
+    }
+}
+
 extension Fmt {
+    /// «0:24», «1:00»
+    static func duration(_ s: Double) -> String {
+        let t = Int(s.rounded())
+        return "\(t / 60):" + String(format: "%02d", t % 60)
+    }
+
     /// «234 КБ», «4,2 МБ»
     static func bytes(_ n: Int) -> String {
         n >= 1_048_576 ? String(format: "%.1f МБ", Double(n) / 1_048_576).replacingOccurrences(of: ".", with: ",") : "\(max(1, n / 1024)) КБ"

@@ -238,6 +238,8 @@ struct Quote: Codable, Hashable {
     let mine: Bool?
     let body: String?
     let photo: JSONValue?
+    let video: Bool?
+    let file: Bool?
     let kind: String?
 }
 
@@ -254,14 +256,21 @@ struct Offer: Codable, Hashable, Identifiable {
 struct Message: Codable, Identifiable, Hashable {
     let id: Int
     let mine: Bool
-    let body: String?
+    var body: String?
     let photo: String?
+    let video: String?          // 1.57.0: видео (адрес /uploads/…)
+    let file: ChatFile?         // 1.57.0: документ
     let kind: String?
     let offerId: Int?
     let reply: Quote?
     let createdAt: Double?
     let read: Bool?
+    var editedAt: Double?       // 1.57.0: изменено
 }
+
+struct ChatFile: Codable, Hashable { let url: String; let name: String; let size: Int }
+/// Правка сообщения, пришедшая при опросе (GET …?edits=).
+struct MessageEdit: Codable, Hashable { let id: Int; let body: String; let editedAt: Double? }
 
 struct ChatListing: Codable, Hashable {
     let id: Int
@@ -285,6 +294,8 @@ struct ChatData: Codable {
     let readUpTo: Int?
     let typing: Bool?
     let messages: [Message]
+    let edited: [MessageEdit]?
+    let now: Double?
 }
 
 struct SentMessage: Codable { let message: Message }
@@ -292,6 +303,8 @@ struct OfferResult: Codable { let offers: [Offer]? }
 /// Переписка с поддержкой — те же сообщения, что в обычном чате (без ответов и предложений цены).
 struct SupportData: Codable { let messages: [Message] }
 struct UploadResult: Codable { let file: String; let url: String? }
+struct VideoStart: Codable { let file: String; let chunk: Int }
+struct VideoPart: Codable { let received: Int?; let ready: Bool? }
 
 // MARK: - Профиль
 

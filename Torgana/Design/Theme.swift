@@ -75,7 +75,7 @@ extension Font {
 
 // Кнопки как на сайте: тёмная (btn-dark), фирменная (btn-accent, градиент), мягкая (btn-soft), контурная (btn-line).
 struct TButton: ButtonStyle {
-    enum Kind { case dark, accent, soft, line, danger }
+    enum Kind { case dark, accent, soft, line, danger, red }
     var kind: Kind = .dark
     var height: CGFloat = 52
     var full = true
@@ -103,6 +103,7 @@ struct TButton: ButtonStyle {
         case .soft: return T.text
         case .line: return T.text
         case .danger: return T.danger
+        case .red: return .white
         }
     }
 
@@ -113,6 +114,7 @@ struct TButton: ButtonStyle {
         case .soft: T.surface
         case .line: Color.clear
         case .danger: T.dangerSoft
+        case .red: LinearGradient(colors: [Color(hex: 0xEF5A50), Color(hex: 0xC8322A)], startPoint: .top, endPoint: .bottom)
         }
     }
 }

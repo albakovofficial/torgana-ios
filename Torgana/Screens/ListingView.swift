@@ -298,7 +298,7 @@ struct ListingView: View {
                         HStack(spacing: 6) {
                             Text(s.name).font(.on(18, .bold)).foregroundStyle(T.text).lineLimit(1)
                             if s.badges?.official == true || s.badges?.shop == true {
-                                Image(systemName: "checkmark.seal.fill").foregroundStyle(T.accent).font(.system(size: 14))
+                                Verified(size: 18)
                             }
                         }
                         RepLine(rep: s.rep, medal: s.badges?.first)
@@ -344,25 +344,66 @@ struct MetaLabel: LabelStyle {
     }
 }
 
-/// Уровень продавца («Новичок», «Надёжный продавец») и медаль «Один из первых» — строками, как на сайте.
+/// Уровень продавца и медаль «Один из первых» — плашками: у каждого уровня свой значок и цвет
+/// (Новичок — росток, Надёжный — щит, Опытный — звезда, Мастер Торганы — корона).
 struct RepLine: View {
     let rep: Rep?
     let medal: FirstMedal?
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            if let lvl = rep?.levelName {
-                HStack(spacing: 6) {
-                    Image(systemName: "hexagon.fill").font(.system(size: 13)).foregroundStyle(T.faint)
-                    Text(lvl).font(.on(14, .heavy)).foregroundStyle(T.text)
-                }
-            }
+        FlowLayout(spacing: 6) {
+            if let lvl = rep?.levelName { LevelPill(level: rep?.level ?? 0, name: lvl) }
             if medal?.no != nil {
-                HStack(spacing: 6) {
-                    Image(systemName: "rosette").font(.system(size: 13, weight: .semibold)).foregroundStyle(T.accent)
-                    Text(medal?.form == "f" ? "Одна из первых" : "Один из первых").font(.on(14, .heavy)).foregroundStyle(T.accent)
-                }
+                Pill(icon: "rosette", text: medal?.form == "f" ? "Одна из первых" : "Один из первых",
+                     tint: .white, fill: AnyShapeStyle(T.grad), iconFill: AnyShapeStyle(Color.white.opacity(0.22)))
             }
         }
+    }
+}
+
+struct LevelPill: View {
+    let level: Int
+    let name: String
+    var body: some View {
+        let s = LevelPill.style(level)
+        Pill(icon: s.icon, text: name, tint: s.tint, fill: AnyShapeStyle(s.tint.opacity(0.12)), iconFill: AnyShapeStyle(s.grad))
+    }
+
+    static func style(_ level: Int) -> (icon: String, tint: Color, grad: LinearGradient) {
+        let g = { (a: UInt32, b: UInt32) in LinearGradient(colors: [Color(hex: a), Color(hex: b)], startPoint: .topLeading, endPoint: .bottomTrailing) }
+        switch level {
+        case 1: return ("checkmark.shield.fill", T.accent, g(0x4C86E0, 0x3D67D0))
+        case 2: return ("star.fill", Color.dyn(0x5B5FD6, 0x9EA1F5), g(0x7B7FF0, 0x5B3DF5))
+        case 3...: return ("crown.fill", Color.dyn(0xA86A00, 0xF2C35B), g(0xF6C453, 0xE08A1E))
+        default: return ("leaf.fill", Color.dyn(0x4F6A8F, 0xA9B9D6), g(0x8FB3E8, 0x6E8FC9))
+        }
+    }
+}
+
+/// Плашка со значком в кружке: 28 точек, 13/700.
+struct Pill: View {
+    let icon: String
+    let text: String
+    let tint: Color
+    let fill: AnyShapeStyle
+    let iconFill: AnyShapeStyle
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon).font(.system(size: 10, weight: .bold)).foregroundStyle(.white)
+                .frame(width: 20, height: 20).background(Circle().fill(iconFill))
+            Text(text).font(.on(13, .bold)).foregroundStyle(tint).lineLimit(1)
+        }
+        .padding(.leading, 4).padding(.trailing, 10)
+        .frame(height: 28)
+        .background(Capsule().fill(fill))
+    }
+}
+
+/// Галочка «Официальный аккаунт» / проверенный магазин — та же, что на сайте (verifiedSeal).
+struct Verified: View {
+    var size: CGFloat = 18
+    var body: some View {
+        Image("VerifiedSeal").resizable().frame(width: size, height: size)
+            .accessibilityLabel("Подтверждённый аккаунт")
     }
 }
 

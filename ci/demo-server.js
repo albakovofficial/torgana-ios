@@ -47,7 +47,8 @@ const msgs = [
   { id: 2, mine: false, body: 'Здравствуйте! Да, продаётся. Аккумулятор 98%, полный комплект.', photo: null, kind: '', offerId: null, reply: null, createdAt: now - 1.8 * H, read: true },
   { id: 3, mine: true, body: 'Предлагаю 85 000 ₽ вместо 89 990 ₽', photo: null, kind: 'offer', offerId: 1, reply: null, createdAt: now - 1.5 * H, read: true },
   { id: 4, mine: false, body: 'Можно посмотреть вживую?', photo: null, kind: '', offerId: null, reply: { id: 1, mine: true, body: 'Здравствуйте! iPhone ещё продаётся?', photo: false, kind: '' }, createdAt: now - 0.4 * H, read: true },
-  { id: 5, mine: false, body: 'Да, могу показать завтра после 18:00', photo: null, kind: '', offerId: null, reply: null, createdAt: now - 0.2 * H, read: true }
+  { id: 5, mine: false, body: 'Да, могу показать завтра после 18:00', photo: null, kind: '', offerId: null, reply: null, createdAt: now - 0.2 * H, read: true, editedAt: now - 0.15 * H },
+  { id: 6, mine: true, body: '', photo: null, file: { url: '/demo/p0.jpg', name: 'Чек и гарантийный талон.pdf', size: 245760 }, kind: '', offerId: null, reply: null, createdAt: now - 0.1 * H, read: false }
 ];
 const notices = [
   { id: 3, kind: 'price', title: 'Подешевело в избранном', body: '«iPhone 15 Pro 256 ГБ» — 89 990 ₽ вместо 95 000 ₽', url: '/l/2', icon: 'price', tone: '', at: now - 3 * H, read: false, photo: '' },

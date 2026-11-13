@@ -1,5 +1,8 @@
 import SwiftUI
 import PhotosUI
+import AVKit
+import QuickLook
+import UniformTypeIdentifiers
 
 // Переписка (вариант 1, «мессенджер», выбран владельцем 13 ноября): на весь экран — шапка с собеседником и «печатает…»,
 // под ней полоса с товаром; свои сообщения — фирменный градиент, чужие — серые; предложение цены — компактная карточка;
@@ -32,6 +35,12 @@ struct ChatView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var asksUsed = false
     @State private var photoPicker = false
+    @State private var videoPicker = false
+    @State private var videoItem: PhotosPickerItem?
+    @State private var fileImporter = false
+    @State private var uploading: String?          // «Загружаем видео… 40%» над полем
+    @State private var editing: Message?           // правка своего сообщения
+    @State private var editsSince: Double = 0      // время сервера прошлого опроса — правки после него
 
     var body: some View {
         VStack(spacing: 0) {
@@ -57,6 +66,7 @@ struct ChatView: View {
                 }
                 .scrollDismissesKeyboard(.interactively)
                 .defaultScrollAnchor(.bottom)
+                .simultaneousGesture(TapGesture().onEnded { focused = false }) // касание по переписке — убрать клавиатуру
                 .onChange(of: messages.last?.id) { _, id in
                     if let id { withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(id, anchor: .bottom) } }
                 }
@@ -70,6 +80,11 @@ struct ChatView: View {
         .toolbar(.hidden, for: .navigationBar)
         .hidesTabBar()
         .photosPicker(isPresented: $photoPicker, selection: $photoItem, matching: .images)
+        .photosPicker(isPresented: $videoPicker, selection: $videoItem, matching: .videos)
+        .onChange(of: videoItem) { _, item in if let item { Task { await sendVideo(item) } } }
+        .fileImporter(isPresented: $fileImporter, allowedContentTypes: Uploader.fileTypes) { result in
+            if case .success(let url) = result { Task { await sendFile(url) } }
+        }
         .task(id: phase) {
             guard phase == .active else { return }
             while !Task.isCancelled {
@@ -85,10 +100,8 @@ struct ChatView: View {
         .sheet(item: $counterFor) { o in
             PriceSheet(title: "Своя цена", hint: "Покупатель предложил \(Fmt.price(o.price))") { price in await act(o, "counter", price: price) }
         }
-        .confirmationDialog(data?.block == "me" ? "Разблокировать?" : "Заблокировать собеседника?", isPresented: $confirmBlock, titleVisibility: .visible) {
-            Button(data?.block == "me" ? "Разблокировать" : "Заблокировать", role: data?.block == "me" ? nil : .destructive) { Task { await toggleBlock() } }
-        } message: {
-            Text(data?.block == "me" ? "Он снова сможет вам писать." : "Он не сможет вам писать, а его объявления пропадут из вашей выдачи.")
+        .sheet(isPresented: $confirmBlock) {
+            if let o = data?.other { BlockSheet(name: o.name, avatar: o.avatar, blocked: data?.block == "me") { await toggleBlock() } }
         }
     }
 
@@ -108,11 +121,11 @@ struct ChatView: View {
             }
             .buttonStyle(.plain).accessibilityLabel("Назад")
             if kind == .support {
-                Image("Logo").resizable().frame(width: 40, height: 40).clipShape(Circle())
+                Image("SupportAvatar").resizable().frame(width: 40, height: 40)
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 4) {
                         Text("Поддержка Торганы").font(.on(17, .bold)).foregroundStyle(T.text)
-                        Image(systemName: "checkmark.seal.fill").font(.system(size: 13)).foregroundStyle(T.accentFill)
+                        Verified(size: 17)
                     }
                     Text("Отвечают люди, а не боты").font(.on(13)).foregroundStyle(T.muted)
                 }
@@ -217,12 +230,14 @@ struct ChatView: View {
                     if let p = m.photo, let u = API.shared.media(p) {
                         RemoteImage(url: u).frame(width: 220, height: 220).clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
+                    if let v = m.video, let u = API.shared.media(v) { VideoBubble(url: u) }
+                    if let f = m.file { FileBubble(file: f, mine: m.mine) }
                     if let b = m.body, !b.isEmpty {
                         Text(b).font(.on(16)).foregroundStyle(m.mine ? .white : T.text).lineSpacing(2).textSelection(.enabled)
                     }
                     HStack(spacing: 4) {
                         Spacer(minLength: 0)
-                        Text(Fmt.time(m.createdAt)).font(.on(11)).foregroundStyle(m.mine ? Color.white.opacity(0.75) : T.faint)
+                        Text((m.editedAt != nil ? "изменено · " : "") + Fmt.time(m.createdAt)).font(.on(11)).foregroundStyle(m.mine ? Color.white.opacity(0.75) : T.faint)
                         if m.mine && kind != .support { Ticks(read: m.id <= readUpTo, tint: Color.white.opacity(m.id <= readUpTo ? 0.95 : 0.7)) }
                     }
                 }
@@ -230,7 +245,8 @@ struct ChatView: View {
                 .background(bubbleShape(m.mine).fill(m.mine ? AnyShapeStyle(T.grad) : AnyShapeStyle(T.surface)))
                 .contentShape(bubbleShape(m.mine))
                 .contextMenu {
-                    if kind != .support { Button { replyTo = m; focused = true } label: { Label("Ответить", systemImage: "arrowshape.turn.up.left") } }
+                    if kind != .support { Button { editing = nil; replyTo = m; focused = true } label: { Label("Ответить", systemImage: "arrowshape.turn.up.left") } }
+                    if canEdit(m) { Button { startEdit(m) } label: { Label("Изменить", systemImage: "pencil") } }
                     if let b = m.body, !b.isEmpty { Button { UIPasteboard.general.string = b } label: { Label("Копировать", systemImage: "doc.on.doc") } }
                 }
                 .modifier(SwipeToReply(enabled: kind != .support) { replyTo = m; focused = true })
@@ -281,7 +297,27 @@ struct ChatView: View {
                     .padding(.top, 10)
                     .overlay(alignment: .top) { T.line.frame(height: 1) }
                 }
-                if let r = replyTo {
+                if let up = uploading {
+                    HStack(spacing: 10) {
+                        ProgressView().tint(T.accent)
+                        Text(up).font(.on(13, .semibold)).foregroundStyle(T.text2)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16).padding(.top, 10)
+                }
+                if let e = editing {
+                    HStack(spacing: 10) {
+                        Image(systemName: "pencil").font(.system(size: 15, weight: .semibold)).foregroundStyle(T.accent)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Изменение сообщения").font(.on(12, .semibold)).foregroundStyle(T.accent)
+                            Text(e.body ?? "").font(.on(13)).foregroundStyle(T.text2).lineLimit(1)
+                        }
+                        Spacer()
+                        Button { editing = nil; text = "" } label: { Image(systemName: "xmark").foregroundStyle(T.muted) }.buttonStyle(.plain)
+                            .accessibilityLabel("Отменить изменение")
+                    }
+                    .padding(.horizontal, 16).padding(.top, 10)
+                } else if let r = replyTo {
                     HStack(spacing: 10) {
                         Image(systemName: "arrowshape.turn.up.left.fill").foregroundStyle(T.accent)
                         VStack(alignment: .leading, spacing: 1) {
@@ -296,12 +332,15 @@ struct ChatView: View {
                 HStack(alignment: .bottom, spacing: 8) {
                     Menu {
                         Button { photoPicker = true } label: { Label("Фото", systemImage: "photo") }
+                        Button { videoPicker = true } label: { Label("Видео до минуты", systemImage: "video") }
+                        Button { fileImporter = true } label: { Label("Файл", systemImage: "doc") }
                         if canOffer { Button { offerSheet = true } label: { Label("Предложить свою цену", systemImage: "tag") } }
                     } label: {
                         Image(systemName: "plus").font(.system(size: 22, weight: .regular)).foregroundStyle(T.muted)
                             .frame(width: 44, height: 44)
                     }
-                    .accessibilityLabel(canOffer ? "Фото или своя цена" : "Отправить фото")
+                    .disabled(uploading != nil || editing != nil)
+                    .accessibilityLabel("Фото, видео, файл")
                     TextField("Сообщение", text: $text, axis: .vertical)
                         .font(.on(16))
                         .lineLimit(1...5)
@@ -309,14 +348,14 @@ struct ChatView: View {
                         .padding(.horizontal, 16).padding(.vertical, 11)
                         .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(T.surface))
                     Button { Task { await sendText() } } label: {
-                        Image(systemName: "arrow.up").font(.system(size: 18, weight: .bold)).foregroundStyle(.white)
+                        Image(systemName: editing != nil ? "checkmark" : "arrow.up").font(.system(size: 18, weight: .bold)).foregroundStyle(.white)
                             .frame(width: 44, height: 44)
                             .background(Circle().fill(T.grad))
                             .opacity(canSend ? 1 : 0.4)
                     }
                     .buttonStyle(.plain)
                     .disabled(!canSend)
-                    .accessibilityLabel("Отправить")
+                    .accessibilityLabel(editing != nil ? "Сохранить" : "Отправить")
                 }
                 .padding(.horizontal, 10).padding(.vertical, 8)
             }
@@ -324,7 +363,20 @@ struct ChatView: View {
         .background(T.bg)
     }
 
-    private var canSend: Bool { !sending && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    private var canSend: Bool { !sending && uploading == nil && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    /// Своё сообщение с текстом, не предложение цены, не старше 48 часов (как на сервере).
+    private func canEdit(_ m: Message) -> Bool {
+        guard m.mine, convId != nil, (m.kind ?? "").isEmpty, let b = m.body, !b.isEmpty, let t = m.createdAt else { return false }
+        return Date().timeIntervalSince1970 * 1000 - t < 48 * 3600 * 1000
+    }
+
+    private func startEdit(_ m: Message) {
+        replyTo = nil
+        editing = m
+        text = m.body ?? ""
+        focused = true
+    }
 
     // MARK: сеть
     private func poll() async {
@@ -332,9 +384,11 @@ struct ChatView: View {
         do {
             switch kind {
             case .conv(let id):
-                let r: ChatData = try await API.shared.get("/api/conversations/\(id)", query: ["after": String(after), "seen": "1"])
+                let r: ChatData = try await API.shared.get("/api/conversations/\(id)", query: ["after": String(after), "seen": "1", "edits": String(Int(editsSince))])
                 data = r
                 merge(r.messages)
+                for e in r.edited ?? [] { apply(e.id, body: e.body, editedAt: e.editedAt) }
+                if let n = r.now { editsSince = n }
                 offers = r.offers ?? offers
                 readUpTo = r.readUpTo ?? readUpTo
                 typing = r.typing ?? false
@@ -346,6 +400,12 @@ struct ChatView: View {
         } catch {
             if messages.isEmpty { self.error = (error as? APIError)?.message }
         }
+    }
+
+    private func apply(_ id: Int, body: String, editedAt: Double?) {
+        guard let i = messages.firstIndex(where: { $0.id == id }) else { return }
+        messages[i].body = body
+        messages[i].editedAt = editedAt ?? Date().timeIntervalSince1970 * 1000
     }
 
     private func merge(_ new: [Message]) {
@@ -361,18 +421,24 @@ struct ChatView: View {
         sending = true
         defer { sending = false }
         do {
-            try await send(body: body, photo: nil)
+            if let e = editing, let id = convId {
+                let r: SentMessage = try await API.shared.send("PATCH", "/api/conversations/\(id)/messages/\(e.id)", body: ["body": body])
+                apply(e.id, body: r.message.body ?? body, editedAt: r.message.editedAt)
+                editing = nil
+            } else {
+                try await send(["body": .string(body)])
+                replyTo = nil
+            }
             text = ""
-            replyTo = nil
             Haptics.play("light")
         } catch {
             app.show((error as? APIError)?.message ?? "Не отправилось", bad: true)
         }
     }
 
-    private func send(body: String, photo: String?) async throws {
-        var payload: [String: JSONValue] = ["body": .string(body)]
-        if let photo { payload["photo"] = .string(photo) }
+    /// Отправка: текст и/или вложение (photo, video, file — имя загруженного файла).
+    private func send(_ fields: [String: JSONValue]) async throws {
+        var payload = fields
         if let r = replyTo { payload["replyTo"] = .number(Double(r.id)) }
         let path: String
         switch kind {
@@ -390,9 +456,37 @@ struct ChatView: View {
         defer { sending = false }
         do {
             let file = try await Uploader.upload(img)
-            try await send(body: "", photo: file)
+            try await send(["body": .string(""), "photo": .string(file)])
         } catch {
             app.show((error as? APIError)?.message ?? "Фото не отправилось", bad: true)
+        }
+    }
+
+    private func sendVideo(_ item: PhotosPickerItem) async {
+        defer { videoItem = nil }
+        uploading = "Готовим видео…"
+        defer { uploading = nil }
+        guard let movie = try? await item.loadTransferable(type: Movie.self) else { app.show("Не удалось открыть видео", bad: true); return }
+        defer { try? FileManager.default.removeItem(at: movie.url) }
+        do {
+            let file = try await Uploader.video(movie.url) { p in Task { @MainActor in uploading = "Загружаем видео… \(Int(p * 100))%" } }
+            uploading = "Отправляем…"
+            try await send(["body": .string(""), "video": .string(file)])
+            Haptics.play("light")
+        } catch {
+            app.show((error as? APIError)?.message ?? "Видео не отправилось", bad: true)
+        }
+    }
+
+    private func sendFile(_ url: URL) async {
+        uploading = "Загружаем файл…"
+        defer { uploading = nil }
+        do {
+            let f = try await Uploader.file(url)
+            try await send(["body": .string(""), "file": .string(f.file)])
+            Haptics.play("light")
+        } catch {
+            app.show((error as? APIError)?.message ?? "Файл не отправился", bad: true)
         }
     }
 
@@ -632,6 +726,155 @@ enum Uploader {
         if let thumb { body["thumb"] = "data:image/jpeg;base64," + thumb.base64EncodedString() }
         let r: UploadResult = try await API.shared.post("/api/uploads", body)
         return r.file
+    }
+
+    /// Видео (до минуты и 100 МБ, MP4 или MOV) — как видео объявления: начать загрузку, потом частями по offset.
+    static func video(_ url: URL, progress: @escaping (Double) -> Void = { _ in }) async throws -> String {
+        let data = try Data(contentsOf: url)
+        let seconds = (try? await AVURLAsset(url: url).load(.duration).seconds) ?? 0
+        let name = url.lastPathComponent.lowercased().hasSuffix(".mp4") ? "video.mp4" : "video.mov"
+        let start: VideoStart = try await API.shared.post("/api/videos", VideoStartBody(name: name, type: name.hasSuffix("mp4") ? "video/mp4" : "video/quicktime", size: data.count, duration: seconds))
+        var offset = 0
+        while offset < data.count {
+            let end = min(offset + start.chunk, data.count)
+            let r: VideoPart = try await API.shared.upload("PUT", "/api/videos/\(start.file)", query: ["offset": String(offset)], data: data.subdata(in: offset..<end))
+            if r.ready == true { break }
+            offset = r.received ?? end
+            progress(Double(offset) / Double(max(data.count, 1)))
+        }
+        return start.file
+    }
+    private struct VideoStartBody: Encodable { let name: String; let type: String; let size: Int; let duration: Double }
+
+    /// Документ до 10 МБ одним запросом; сервер проверит формат по началу файла.
+    static func file(_ url: URL) async throws -> UploadResult {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        let data = try Data(contentsOf: url)
+        guard data.count <= 10 * 1024 * 1024 else { throw APIError(status: 413, message: "Файл больше 10 МБ — отправьте его частями или в архиве") }
+        return try await API.shared.upload("POST", "/api/files", query: ["name": url.lastPathComponent], data: data)
+    }
+
+    /// Какие файлы можно выбрать (то же, что принимает сервер).
+    static let fileTypes: [UTType] = [.pdf, .plainText, .commaSeparatedText, .rtf, .zip]
+        + ["doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp"].compactMap { UTType(filenameExtension: $0) }
+}
+
+/// Видео из «Фото»: система отдаёт копию файла, мы переносим её во временную папку.
+struct Movie: Transferable {
+    let url: URL
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(contentType: .movie) { SentTransferredFile($0.url) } importing: { received in
+            let copy = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).\(received.file.pathExtension.isEmpty ? "mov" : received.file.pathExtension)")
+            try FileManager.default.copyItem(at: received.file, to: copy)
+            return Movie(url: copy)
+        }
+    }
+}
+
+// MARK: - Видео и файл в пузыре
+/// Видео: кадр из начала и кнопка «смотреть»; нажатие — на весь экран.
+struct VideoBubble: View {
+    let url: URL
+    @State private var poster: UIImage?
+    @State private var playing = false
+
+    var body: some View {
+        ZStack {
+            if let poster { Image(uiImage: poster).resizable().scaledToFill() } else { Color.black.opacity(0.85) }
+            Image(systemName: "play.fill").font(.system(size: 20, weight: .bold)).foregroundStyle(.white)
+                .frame(width: 52, height: 52).background(Circle().fill(.black.opacity(0.45)))
+        }
+        .frame(width: 220, height: 260)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .contentShape(Rectangle())
+        .onTapGesture { playing = true }
+        .task(id: url) {
+            let gen = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+            gen.appliesPreferredTrackTransform = true
+            gen.maximumSize = CGSize(width: 600, height: 600)
+            if let cg = try? await gen.image(at: CMTime(seconds: 0.1, preferredTimescale: 600)).image { poster = UIImage(cgImage: cg) }
+        }
+        .fullScreenCover(isPresented: $playing) { VideoScreen(url: url) }
+        .accessibilityLabel("Видео")
+    }
+}
+
+struct VideoScreen: View {
+    let url: URL
+    @Environment(\.dismiss) private var dismiss
+    @State private var player: AVPlayer?
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.black.ignoresSafeArea()
+            if let player { VideoPlayer(player: player).ignoresSafeArea() }
+            Button { dismiss() } label: {
+                Image(systemName: "xmark").font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
+                    .frame(width: 44, height: 44).background(Circle().fill(.white.opacity(0.18)))
+            }
+            .padding(16)
+            .accessibilityLabel("Закрыть")
+        }
+        .onAppear { let p = AVPlayer(url: url); player = p; p.play() }
+        .onDisappear { player?.pause() }
+    }
+}
+
+/// Документ: значок по типу, название, размер; нажатие — скачать и открыть просмотр (Quick Look).
+struct FileBubble: View {
+    let file: ChatFile
+    let mine: Bool
+    @State private var local: URL?
+    @State private var loading = false
+
+    var body: some View {
+        Button { Task { await open() } } label: {
+            HStack(spacing: 10) {
+                ZStack {
+                    if loading { ProgressView().tint(mine ? T.accent : .white) }
+                    else { Image(systemName: icon).font(.system(size: 17, weight: .semibold)).foregroundStyle(mine ? T.accent : .white) }
+                }
+                .frame(width: 42, height: 42)
+                .background(Circle().fill(mine ? AnyShapeStyle(Color.white) : AnyShapeStyle(T.grad)))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(file.name).font(.on(15, .semibold)).foregroundStyle(mine ? .white : T.text).lineLimit(2).multilineTextAlignment(.leading)
+                    Text("\(ext.uppercased()) · \(Fmt.bytes(file.size))").font(.on(12)).foregroundStyle(mine ? Color.white.opacity(0.8) : T.muted)
+                }
+            }
+            .frame(maxWidth: 240, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+        .quickLookPreview($local)
+        .accessibilityLabel("Файл \(file.name)")
+    }
+
+    private var ext: String { (file.name as NSString).pathExtension.lowercased() }
+    private var icon: String {
+        switch ext {
+        case "pdf": return "doc.richtext.fill"
+        case "xls", "xlsx", "ods", "csv": return "tablecells.fill"
+        case "ppt", "pptx", "odp": return "rectangle.on.rectangle.angled.fill"
+        case "zip": return "doc.zipper"
+        default: return "doc.text.fill"
+        }
+    }
+
+    private func open() async {
+        guard let url = API.shared.media(file.url) else { return }
+        loading = true
+        defer { loading = false }
+        guard let (tmp, _) = try? await URLSession.shared.download(from: url) else { return }
+        let dest = FileManager.default.temporaryDirectory.appendingPathComponent(file.name)
+        try? FileManager.default.removeItem(at: dest)
+        guard (try? FileManager.default.moveItem(at: tmp, to: dest)) != nil else { return }
+        local = dest
+    }
+}
+
+extension Fmt {
+    /// «234 КБ», «4,2 МБ»
+    static func bytes(_ n: Int) -> String {
+        n >= 1_048_576 ? String(format: "%.1f МБ", Double(n) / 1_048_576).replacingOccurrences(of: ".", with: ",") : "\(max(1, n / 1024)) КБ"
     }
 }
 

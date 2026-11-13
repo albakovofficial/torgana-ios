@@ -60,7 +60,7 @@ struct ProfileView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 6) {
                         Text(me.name).font(.on(18, .bold)).foregroundStyle(T.text).lineLimit(2)
-                        if me.badges?.official == true { Image(systemName: "checkmark.seal.fill").foregroundStyle(T.accent) }
+                        if me.badges?.official == true { Verified(size: 22) }
                     }
                     Text([me.city, "на Торгане с \(Fmt.monthYear(me.createdAt))"].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
                         .font(.on(13)).foregroundStyle(T.muted).fixedSize(horizontal: false, vertical: true)

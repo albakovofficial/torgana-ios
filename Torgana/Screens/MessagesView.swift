@@ -87,11 +87,11 @@ struct MessagesView: View {
     // Поддержка: закреплена первой, мягкая полоса фирменного цвета, знак Торганы 56, галочка у названия.
     private var supportRow: some View {
         HStack(spacing: 12) {
-            Image("Logo").resizable().frame(width: 56, height: 56).clipShape(Circle())
+            Image("SupportAvatar").resizable().frame(width: 56, height: 56)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 4) {
                     Text("Поддержка Торганы").font(.on(16, .bold)).foregroundStyle(T.text).lineLimit(1)
-                    Image(systemName: "checkmark.seal.fill").font(.system(size: 14)).foregroundStyle(T.accentFill)
+                    Verified(size: 18)
                     Spacer(minLength: 6)
                     Image(systemName: "pin.fill").font(.system(size: 12)).foregroundStyle(T.accent).rotationEffect(.degrees(45))
                 }

@@ -50,7 +50,12 @@ final class API {
         try await send("POST", path, body: [String: String]())
     }
 
-    func send<R: Decodable, B: Encodable>(_ method: String, _ path: String, query: [String: String] = [:], body: B?) async throws -> R {
+    /// Файл целиком в теле запроса (видео частями, документ) — тот же разбор ответа и ошибок.
+    func upload<R: Decodable>(_ method: String, _ path: String, query: [String: String] = [:], data: Data, as type: R.Type = R.self) async throws -> R {
+        try await send(method, path, query: query, body: Optional<[String: String]>.none, raw: data)
+    }
+
+    func send<R: Decodable, B: Encodable>(_ method: String, _ path: String, query: [String: String] = [:], body: B?, raw: Data? = nil) async throws -> R {
         var comps = URLComponents(url: url(path), resolvingAgainstBaseURL: true)!
         if !query.isEmpty { comps.queryItems = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) } }
         var req = URLRequest(url: comps.url!)
@@ -59,6 +64,11 @@ final class API {
         if let body {
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
             req.httpBody = try JSONEncoder().encode(body)
+        }
+        if let raw {
+            req.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+            req.httpBody = raw
+            req.timeoutInterval = 180
         }
         let data: Data, resp: URLResponse
         do { (data, resp) = try await session.data(for: req) } catch { throw APIError.offline }

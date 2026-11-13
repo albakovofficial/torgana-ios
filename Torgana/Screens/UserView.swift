@@ -33,9 +33,9 @@ struct UserView: View {
             TabBarSpace()
         }
         .sitePage()
-        .confirmationDialog(user?.block == "me" ? "Разблокировать?" : "Заблокировать продавца?", isPresented: $confirmBlock, titleVisibility: .visible) {
-            Button(user?.block == "me" ? "Разблокировать" : "Заблокировать", role: user?.block == "me" ? nil : .destructive) { Task { await toggleBlock() } }
-        } message: { Text(user?.block == "me" ? "Он снова сможет вам писать." : "Он не сможет вам писать, а его объявления пропадут из вашей выдачи.") }
+        .sheet(isPresented: $confirmBlock) {
+            if let u = user { BlockSheet(name: u.name, avatar: u.avatar, blocked: u.block == "me") { await toggleBlock() } }
+        }
         .sheet(isPresented: $pick) { WritePicker(name: user?.name ?? "", items: items) { lid in pick = false; Task { await app.openChat(listingId: lid) } } }
         .refreshable { await load() }
         .task { if user == nil { await load() } }
@@ -50,7 +50,7 @@ struct UserView: View {
                 VStack(alignment: .leading, spacing: 5) {
                     HStack(spacing: 6) {
                         Text(u.name).font(.on(22, .heavy)).foregroundStyle(T.text)
-                        if u.badges?.official == true || u.badges?.shop == true { Image(systemName: "checkmark.seal.fill").foregroundStyle(T.accent) }
+                        if u.badges?.official == true || u.badges?.shop == true { Verified(size: 22) }
                     }
                     Text([u.city, u.createdAt.map { "на Торгане с \(Fmt.monthYear($0))" }].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
                         .font(.on(13)).foregroundStyle(T.muted)
@@ -79,12 +79,13 @@ struct UserView: View {
                     ShareLink(item: API.shared.url("/u/\(u.id)"), subject: Text(u.name)) { RoundIcon(icon: "square.and.arrow.up", size: 48, fill: T.card) }
                         .accessibilityLabel("Поделиться")
                     if app.me != nil {
-                        Menu {
-                            Button(role: u.block == "me" ? nil : .destructive) { confirmBlock = true } label: {
-                                Label(u.block == "me" ? "Разблокировать" : "Заблокировать", systemImage: "hand.raised")
-                            }
-                        } label: { RoundIcon(icon: "ellipsis", size: 48, fill: T.card) }
-                        .accessibilityLabel("Ещё")
+                        // Блокировка — своей кнопкой (рука; у заблокированного — красная), окно с объяснением.
+                        Button { confirmBlock = true } label: {
+                            RoundIcon(icon: u.block == "me" ? "hand.raised.slash.fill" : "hand.raised", size: 48,
+                                      fill: u.block == "me" ? T.dangerSoft : T.card, tint: u.block == "me" ? T.danger : T.text)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(u.block == "me" ? "Разблокировать" : "Заблокировать")
                     }
                 }
             }
@@ -115,7 +116,7 @@ struct UserView: View {
             .background(Capsule().fill(T.card).shadow(color: Color(hex: 0x101010).opacity(0.08), radius: 5, y: 2))
             Button { nav.push(.web("/u/\(u.id)?tab=rep")) } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: "hexagon.fill").font(.system(size: 12)).foregroundStyle(T.faint)
+                    Image(systemName: LevelPill.style(u.rep?.level ?? 0).icon).font(.system(size: 12, weight: .semibold)).foregroundStyle(LevelPill.style(u.rep?.level ?? 0).tint)
                     Text("Репутация").font(.on(15, .semibold)).foregroundStyle(T.text2)
                 }
                 .frame(maxWidth: .infinity).frame(height: 44)

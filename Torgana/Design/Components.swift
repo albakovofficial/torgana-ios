@@ -156,7 +156,7 @@ struct ListingCardView: View {
                     HStack(spacing: 6) {
                         Avatar(name: s.name, url: s.avatar, size: 20)
                         Text(s.name).font(.on(12.5)).foregroundStyle(T.text2).lineLimit(1)
-                        if s.shop == true { Image(systemName: "checkmark.seal.fill").font(.system(size: 11)).foregroundStyle(T.accent) }
+                        if s.shop == true { Verified(size: 14) }
                     }
                     .padding(.top, 10)
                 }
@@ -298,6 +298,76 @@ enum CatIcon {
         case "animals": return "pawprint"
         case "business": return "building.2"
         default: return "square.grid.2x2"
+        }
+    }
+}
+
+// MARK: - Блокировка: своё окно вместо системного меню — что произойдёт, и одна крупная кнопка.
+struct BlockSheet: View {
+    let name: String
+    let avatar: String?
+    let blocked: Bool
+    let onConfirm: () async -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var busy = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ZStack(alignment: .bottomTrailing) {
+                Avatar(name: name, url: avatar, size: 76)
+                Image(systemName: blocked ? "hand.raised.slash.fill" : "hand.raised.fill")
+                    .font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
+                    .frame(width: 32, height: 32)
+                    .background(Circle().fill(blocked ? AnyShapeStyle(T.grad) : AnyShapeStyle(LinearGradient(colors: [Color(hex: 0xF0645A), Color(hex: 0xC8322A)], startPoint: .top, endPoint: .bottom))))
+                    .overlay(Circle().strokeBorder(T.bg, lineWidth: 3))
+                    .offset(x: 6, y: 4)
+            }
+            .padding(.top, 28)
+            Text(blocked ? "Разблокировать \(name)?" : "Заблокировать \(name)?")
+                .font(.on(22, .heavy)).foregroundStyle(T.text).multilineTextAlignment(.center)
+                .padding(.top, 16).padding(.horizontal, 20)
+            VStack(alignment: .leading, spacing: 12) {
+                if blocked {
+                    point("message", "Снова сможет писать вам")
+                    point("square.grid.2x2", "Его объявления вернутся в выдачу")
+                } else {
+                    point("message.badge.filled.fill", "Не сможет писать вам — ни в старых, ни в новых переписках")
+                    point("eye.slash", "Его объявления пропадут из вашей выдачи")
+                    point("arrow.uturn.backward", "Разблокировать можно в любой момент — здесь же")
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(T.surface))
+            .padding(.horizontal, 20).padding(.top, 18)
+            Spacer(minLength: 16)
+            VStack(spacing: 8) {
+                Button {
+                    Task { busy = true; await onConfirm(); busy = false; dismiss() }
+                } label: {
+                    if busy { ProgressView().tint(.white) } else { Text(blocked ? "Разблокировать" : "Заблокировать") }
+                }
+                .buttonStyle(TButton(kind: blocked ? .accent : .red))
+                .disabled(busy)
+                Button("Отмена") { dismiss() }.buttonStyle(TButton(kind: .soft))
+            }
+            .padding(.horizontal, 20).padding(.bottom, 12)
+        }
+        .frame(maxWidth: .infinity)
+        .background(T.bg.ignoresSafeArea())
+        .presentationDetents([.height(blocked ? 430 : 500)])
+        .presentationDragIndicator(.visible)
+        .presentationCornerRadius(28)
+    }
+
+    private func point(_ icon: String, _ text: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: icon).font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(blocked ? T.accent : T.danger)
+                .frame(width: 30, height: 30)
+                .background(Circle().fill(blocked ? T.accentSoft : T.dangerSoft))
+            Text(text).font(.on(15)).foregroundStyle(T.text).fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 5)
         }
     }
 }

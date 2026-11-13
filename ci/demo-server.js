@@ -28,7 +28,7 @@ const listing = (c) => ({
     condition: 'used', bargain: true, exchange: c.id === 5, views: 128, favCount: 9, updatedAt: c.createdAt, photos: [c.photo, `/demo/p${(c.id) % 6}.jpg`, `/demo/p${(c.id + 1) % 6}.jpg`],
     isOwner: false, specs: c.id === 5 ? [{ label: 'Марка', value: 'Lada' }, { label: 'Модель', value: 'Vesta' }, { label: 'Год выпуска', value: 2021 }, { label: 'Пробег', value: '48 000 км' }, { label: 'Коробка', value: 'Механика' }] : [{ label: 'Состояние', value: 'Б/у, отличное' }],
     rejectReason: '' },
-  seller: { id: 2, name: 'Анна Смирнова', city: c.city, avatar: null, createdAt: now - 60 * 24 * H, activeCount: 6, rep: { level: 2, levelName: 'Надёжный продавец', deals: 14 },
+  seller: { id: 2, name: 'Анна Смирнова', city: c.city, avatar: null, createdAt: now - 60 * 24 * H, activeCount: 6, rep: { level: 2, levelName: 'Опытный', deals: 34 },
     badges: { official: false, shop: false, first: { no: 3, form: 'f' } }, followers: 12, following: false },
   similar: items.filter((x) => x.id !== c.id).slice(0, 4)
 });

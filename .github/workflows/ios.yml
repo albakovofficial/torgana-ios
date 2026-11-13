@@ -83,9 +83,18 @@ jobs:
               n=$((n+1))
               name=$(printf "%s-%02d-%s" "$mode" "$n" "$(echo "$r" | tr -c 'a-z0-9' '-' | sed 's/^-*//;s/-*$//')")
               echo "$(date -u +%H:%M:%S.000) === $mode $r" >> demo.log
-              xcrun simctl launch --terminate-running-process "$UDID" ru.torgana.app -base http://127.0.0.1:8787 -route "$r" > /dev/null
-              sleep 10
-              xcrun simctl io "$UDID" screenshot "shots/${name:-home}.png" > /dev/null
+              f="shots/${name:-home}.png"
+              # Медленный симулятор иногда показывает пустой экран (снимок ~76 КБ) — ждём и снимаем ещё, при надобности перезапускаем.
+              for try in 1 2 3; do
+                xcrun simctl launch --terminate-running-process "$UDID" ru.torgana.app -base http://127.0.0.1:8787 -route "$r" > /dev/null
+                sleep 10
+                for k in 1 2 3; do
+                  xcrun simctl io "$UDID" screenshot "$f" > /dev/null
+                  [ "$(stat -f%z "$f")" -gt 150000 ] && break 2
+                  sleep 6
+                done
+                echo "пустой экран: $mode $r (попытка $try)"
+              done
             done
           done
           ls shots

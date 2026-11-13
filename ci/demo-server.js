@@ -32,9 +32,15 @@ const listing = (c) => ({
     badges: { official: false, shop: false, first: { no: 3, form: 'f' } }, followers: 12, following: false },
   similar: items.filter((x) => x.id !== c.id).slice(0, 4)
 });
+const conv = (id, it, name, other, lastBody, unread, hoursAgo, role, lastMine, status = 'active') => ({ id, listingId: it.id, title: it.title, price: it.price, priceUnit: it.priceUnit,
+  status, photo: it.photo, other: { id: other, name, avatar: null }, lastBody, unread, updatedAt: now - hoursAgo * H, role, blocked: false, lastMine });
 const convs = [
-  { id: 1, listingId: 2, title: items[1].title, price: items[1].price, priceUnit: '', status: 'active', photo: items[1].photo, other: { id: 2, name: 'Анна Смирнова', avatar: null }, lastBody: 'Да, могу показать завтра после 18:00', unread: 2, updatedAt: now - 0.2 * H, role: 'buyer', blocked: false, lastMine: 0 },
-  { id: 2, listingId: 5, title: items[4].title, price: items[4].price, priceUnit: '', status: 'active', photo: items[4].photo, other: { id: 3, name: 'Олег', avatar: null }, lastBody: 'Хорошо, договорились', unread: 0, updatedAt: now - 26 * H, role: 'seller', blocked: false, lastMine: 1 }
+  conv(1, items[1], 'Анна Смирнова', 2, 'Да, могу показать завтра после 18:00', 2, 0.2, 'buyer', 0),
+  conv(2, items[2], 'Олег', 3, 'Хорошо, завтра в 18:00 подойдёт', 0, 3, 'seller', 2),
+  conv(3, items[2], 'Марина К.', 4, 'А доставка до Химок возможна?', 1, 26, 'seller', 0),
+  conv(4, items[0], 'Дмитрий', 5, 'Предлагаю 42 000 ₽', 0, 50, 'seller', 1),
+  conv(5, items[4], 'Сергей', 6, 'Спасибо, уже купил другую', 0, 120, 'buyer', 0, 'sold'),
+  conv(6, items[6], 'Ирина', 7, 'Зарядка в комплекте?', 0, 150, 'buyer', 2)
 ];
 const msgs = [
   { id: 1, mine: true, body: 'Здравствуйте! iPhone ещё продаётся?', photo: null, kind: '', offerId: null, reply: null, createdAt: now - 2 * H, read: true },

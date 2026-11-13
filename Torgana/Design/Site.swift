@@ -118,7 +118,7 @@ struct SiteMenu: View {
                         row("message", "Сообщения") { go("/messages") }
                         row("heart", "Избранное") { go("/favorites") }
                         row("person.2", "Подписки") { go("/profile/following") }
-                        row("star", "Отзывы и репутация") { go("/profile/reputation") }
+                        row("star", "Репутация") { go("/profile/reputation") }
                         row("gearshape", "Настройки") { go("/profile/settings") }
                     }
                     .panel(radius: 24, padding: 6)

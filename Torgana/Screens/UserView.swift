@@ -116,7 +116,7 @@ struct UserView: View {
             .background(Capsule().fill(T.card).shadow(color: Color(hex: 0x101010).opacity(0.08), radius: 5, y: 2))
             Button { nav.push(.web("/u/\(u.id)?tab=rep")) } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: LevelPill.style(u.rep?.level ?? 0).icon).font(.system(size: 12, weight: .semibold)).foregroundStyle(LevelPill.style(u.rep?.level ?? 0).tint)
+                    LevelCoin(level: u.rep?.level ?? 0, size: 18)
                     Text("Репутация").font(.on(15, .semibold)).foregroundStyle(T.text2)
                 }
                 .frame(maxWidth: .infinity).frame(height: 44)

@@ -344,8 +344,8 @@ struct MetaLabel: LabelStyle {
     }
 }
 
-/// Уровень продавца и медаль «Один из первых» — плашками: у каждого уровня свой значок и цвет
-/// (Новичок — росток, Надёжный — щит, Опытный — звезда, Мастер Торганы — корона).
+/// Уровень продавца и медаль «Один из первых» — плашками: у каждого уровня своя объёмная монета
+/// (Новичок — бронза с листком, Надёжный — изумруд со щитом, Опытный — золото со звездой, Мастер Торганы — бриллиант с короной).
 struct RepLine: View {
     let rep: Rep?
     let medal: FirstMedal?
@@ -364,18 +364,33 @@ struct LevelPill: View {
     let level: Int
     let name: String
     var body: some View {
-        let s = LevelPill.style(level)
-        Pill(icon: s.icon, text: name, tint: s.tint, fill: AnyShapeStyle(s.tint.opacity(0.12)), iconFill: AnyShapeStyle(s.grad))
+        HStack(spacing: 6) {
+            LevelCoin(level: level, size: 22)
+            Text(name).font(.on(13, .bold)).foregroundStyle(LevelPill.tint(level)).lineLimit(1)
+        }
+        .padding(.leading, 3).padding(.trailing, 10)
+        .frame(height: 28)
+        .background(Capsule().fill(LevelPill.tint(level).opacity(0.12)))
     }
 
-    static func style(_ level: Int) -> (icon: String, tint: Color, grad: LinearGradient) {
-        let g = { (a: UInt32, b: UInt32) in LinearGradient(colors: [Color(hex: a), Color(hex: b)], startPoint: .topLeading, endPoint: .bottomTrailing) }
+    /// Цвет надписи уровня — под цвет монеты.
+    static func tint(_ level: Int) -> Color {
         switch level {
-        case 1: return ("checkmark.shield.fill", T.accent, g(0x4C86E0, 0x3D67D0))
-        case 2: return ("star.fill", Color.dyn(0x5B5FD6, 0x9EA1F5), g(0x7B7FF0, 0x5B3DF5))
-        case 3...: return ("crown.fill", Color.dyn(0xA86A00, 0xF2C35B), g(0xF6C453, 0xE08A1E))
-        default: return ("leaf.fill", Color.dyn(0x4F6A8F, 0xA9B9D6), g(0x8FB3E8, 0x6E8FC9))
+        case 1: return Color.dyn(0x13804A, 0x5FD394)
+        case 2: return Color.dyn(0x9A5B05, 0xF2C35B)
+        case 3...: return Color.dyn(0x5B3DF5, 0xA99BFF)
+        default: return Color.dyn(0x8A4B22, 0xE0A37A)
         }
+    }
+}
+
+/// Монета уровня — та же картинка, что на сайте (levelMedal в app.js): Assets Level0–3.
+struct LevelCoin: View {
+    let level: Int
+    var size: CGFloat = 22
+    var body: some View {
+        Image("Level\(min(max(level, 0), 3))").resizable().interpolation(.high).frame(width: size, height: size)
+            .accessibilityHidden(true)
     }
 }
 

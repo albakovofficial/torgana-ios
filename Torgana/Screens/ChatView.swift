@@ -51,44 +51,42 @@ struct ChatView: View {
             chatHeader
             if let l = data?.listing { listingStrip(l) }
             ScrollViewReader { proxy in
+                // Переписка «перевёрнута» (как в мессенджерах): начало прокрутки — это низ, самое новое. Поэтому при открытии
+                // и закрытии клавиатуры, при новых сообщениях последние всегда остаются над полем ввода — без доводки и прыжков.
+                // Каждая строка перевёрнута обратно, порядок строк — от новых к старым.
                 ScrollView {
-                    // Обычный VStack, не ленивый: ленивый при появлении клавиатуры пересчитывает высоты и прыгает, оставляя пустые места.
-                    // В переписке до 500 сообщений — это немного.
-                    VStack(spacing: 6) {
-                        if messages.isEmpty && error == nil {
-                            if data == nil && convId != nil { LoadingView() } else { hint }
-                        }
-                        ForEach(Array(messages.enumerated()), id: \.element.id) { i, m in
-                            if i == 0 || !Calendar.current.isDate(date(m), inSameDayAs: date(messages[i - 1])) {
-                                Text(Fmt.day(m.createdAt).capitalizedFirst).font(.on(12, .semibold)).foregroundStyle(T.muted).padding(.vertical, 8)
-                            }
-                            bubble(m).id(m.id)
+                    LazyVStack(spacing: 6) {
+                        if typing {
+                            HStack { TypingDots(); Spacer() }.flipped().id("typing")
                         }
                         if let p = pending {
-                            PendingBubble(upload: p) { uploadTask?.cancel(); pending = nil }.id("pending")
+                            PendingBubble(upload: p) { uploadTask?.cancel(); pending = nil }.flipped().id("pending")
                         }
-                        if typing {
-                            HStack { TypingDots(); Spacer() }.id("typing")
+                        ForEach(Array(messages.enumerated()).reversed(), id: \.element.id) { i, m in
+                            VStack(spacing: 6) {
+                                if i == 0 || !Calendar.current.isDate(date(m), inSameDayAs: date(messages[i - 1])) {
+                                    Text(Fmt.day(m.createdAt).capitalizedFirst).font(.on(12, .semibold)).foregroundStyle(T.muted).padding(.vertical, 8)
+                                }
+                                bubble(m)
+                            }
+                            .flipped().id(m.id)
+                        }
+                        if messages.isEmpty && error == nil {
+                            Group { if data == nil && convId != nil { LoadingView() } else { hint } }.flipped()
                         }
                     }
                     .padding(.horizontal, 12).padding(.vertical, 10)
                 }
+                .flipped()
                 .scrollDismissesKeyboard(.interactively)
-                .modifier(StickToBottom())
                 .simultaneousGesture(TapGesture().onEnded { focused = false }) // касание по переписке — убрать клавиатуру
                 .onChange(of: messages.last?.id) { _, id in
-                    if let id { withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(id, anchor: .bottom) } }
+                    if let id { withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(id, anchor: .top) } } // .top перевёрнутого — низ экрана
                 }
                 .onChange(of: pending == nil) { _, done in
-                    if !done { withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("pending", anchor: .bottom) } }
+                    if !done { withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("pending", anchor: .top) } }
                 }
-                .onChange(of: focused) { _, f in
-                    if f { attachOpen = false }
-                    // iOS 18+ держит низ переписки сам (StickToBottom); на iOS 17 — докручиваем, когда клавиатура уже открылась.
-                    if #unavailable(iOS 18.0) {
-                        if f, let id = messages.last?.id { DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { proxy.scrollTo(id, anchor: .bottom) } }
-                    }
-                }
+                .onChange(of: focused) { _, f in if f { attachOpen = false } }
             }
             .overlay(alignment: .bottomLeading) {
                 ZStack(alignment: .bottomLeading) {
@@ -248,43 +246,50 @@ struct ChatView: View {
         } else {
             HStack {
                 if m.mine { Spacer(minLength: 56) }
-                VStack(alignment: .leading, spacing: 5) {
-                    if let r = m.reply {
-                        HStack(spacing: 8) {
-                            Capsule().fill(m.mine ? Color.white.opacity(0.85) : T.accent).frame(width: 3)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(r.mine == true ? "Вы" : (data?.other?.name ?? "Собеседник")).font(.on(12, .semibold)).foregroundStyle(m.mine ? .white : T.accent)
-                                Text(!(r.body ?? "").isEmpty ? r.body! : r.video == true ? "Видео" : r.file == true ? "Файл" : "Фото").font(.on(13)).foregroundStyle(m.mine ? Color.white.opacity(0.85) : T.text2).lineLimit(2)
-                            }
-                        }
-                        .fixedSize(horizontal: false, vertical: true)
-                    }
-                    if let p = m.photo, let u = API.shared.media(p) {
-                        RemoteImage(url: u).frame(width: 220, height: 220).clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    }
-                    if let v = m.video, let u = API.shared.media(v) { VideoBubble(url: u) }
-                    if let f = m.file { FileBubble(file: f, mine: m.mine) }
-                    if let b = m.body, !b.isEmpty {
-                        Text(b).font(.on(16)).foregroundStyle(m.mine ? .white : T.text).lineSpacing(2).textSelection(.enabled)
-                    }
-                    HStack(spacing: 4) {
-                        Spacer(minLength: 0)
-                        Text((m.editedAt != nil ? "изменено · " : "") + Fmt.time(m.createdAt)).font(.on(11)).foregroundStyle(m.mine ? Color.white.opacity(0.75) : T.faint)
-                        if m.mine && kind != .support { Ticks(read: m.id <= readUpTo, tint: Color.white.opacity(m.id <= readUpTo ? 0.95 : 0.7)) }
-                    }
-                }
-                .padding(.horizontal, 13).padding(.top, 9).padding(.bottom, 7)
-                .background(bubbleShape(m.mine).fill(m.mine ? AnyShapeStyle(T.grad) : AnyShapeStyle(T.surface)))
+                bubbleBody(m)
                 .contentShape(bubbleShape(m.mine))
+                // Своё превью меню: переписка перевёрнута, а снимок пузыря по умолчанию вышел бы вверх ногами.
                 .contextMenu {
                     if kind != .support { Button { editing = nil; replyTo = m; focused = true } label: { Label("Ответить", systemImage: "arrowshape.turn.up.left") } }
                     if canEdit(m) { Button { startEdit(m) } label: { Label("Изменить", systemImage: "pencil") } }
                     if let b = m.body, !b.isEmpty { Button { UIPasteboard.general.string = b } label: { Label("Копировать", systemImage: "doc.on.doc") } }
+                } preview: {
+                    bubbleBody(m).frame(maxWidth: 320)
                 }
                 .modifier(SwipeToReply(enabled: kind != .support) { replyTo = m; focused = true })
                 if !m.mine { Spacer(minLength: 56) }
             }
         }
+    }
+
+    private func bubbleBody(_ m: Message) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            if let r = m.reply {
+                HStack(spacing: 8) {
+                    Capsule().fill(m.mine ? Color.white.opacity(0.85) : T.accent).frame(width: 3)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(r.mine == true ? "Вы" : (data?.other?.name ?? "Собеседник")).font(.on(12, .semibold)).foregroundStyle(m.mine ? .white : T.accent)
+                        Text(!(r.body ?? "").isEmpty ? r.body! : r.video == true ? "Видео" : r.file == true ? "Файл" : "Фото").font(.on(13)).foregroundStyle(m.mine ? Color.white.opacity(0.85) : T.text2).lineLimit(2)
+                    }
+                }
+                .fixedSize(horizontal: false, vertical: true)
+            }
+            if let p = m.photo, let u = API.shared.media(p) {
+                RemoteImage(url: u).frame(width: 220, height: 220).clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            if let v = m.video, let u = API.shared.media(v) { VideoBubble(url: u) }
+            if let f = m.file { FileBubble(file: f, mine: m.mine) }
+            if let b = m.body, !b.isEmpty {
+                Text(b).font(.on(16)).foregroundStyle(m.mine ? .white : T.text).lineSpacing(2).textSelection(.enabled)
+            }
+            HStack(spacing: 4) {
+                Spacer(minLength: 0)
+                Text((m.editedAt != nil ? "изменено · " : "") + Fmt.time(m.createdAt)).font(.on(11)).foregroundStyle(m.mine ? Color.white.opacity(0.75) : T.faint)
+                if m.mine && kind != .support { Ticks(read: m.id <= readUpTo, tint: Color.white.opacity(m.id <= readUpTo ? 0.95 : 0.7)) }
+            }
+        }
+        .padding(.horizontal, 13).padding(.top, 9).padding(.bottom, 7)
+        .background(bubbleShape(m.mine).fill(m.mine ? AnyShapeStyle(T.grad) : AnyShapeStyle(T.surface)))
     }
 
     private func bubbleShape(_ mine: Bool) -> UnevenRoundedRectangle {
@@ -639,19 +644,9 @@ struct ChatView: View {
 }
 
 // Свайп пузыря вправо — ответить на это сообщение.
-/// Переписка «прилипает» к низу: при открытии и закрытии клавиатуры, при новых сообщениях последние остаются над полем —
-/// без прыжков и доводки scrollTo (iOS 18+). На iOS 17 такой настройки нет — только начальная позиция внизу.
-struct StickToBottom: ViewModifier {
-    func body(content: Content) -> some View {
-        if #available(iOS 18.0, *) {
-            content
-                .defaultScrollAnchor(.bottom, for: .initialOffset)
-                .defaultScrollAnchor(.bottom, for: .sizeChanges)
-                .defaultScrollAnchor(.bottom, for: .alignment)
-        } else {
-            content.defaultScrollAnchor(.bottom)
-        }
-    }
+extension View {
+    /// Перевернуть по вертикали — для «перевёрнутой» переписки (низ — начало прокрутки).
+    func flipped() -> some View { scaleEffect(x: 1, y: -1, anchor: .center) }
 }
 
 struct SwipeToReply: ViewModifier {

@@ -52,7 +52,9 @@ struct ChatView: View {
             if let l = data?.listing { listingStrip(l) }
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(spacing: 6) {
+                    // Обычный VStack, не ленивый: ленивый при появлении клавиатуры пересчитывает высоты и прыгает, оставляя пустые места.
+                    // В переписке до 500 сообщений — это немного.
+                    VStack(spacing: 6) {
                         if messages.isEmpty && error == nil {
                             if data == nil && convId != nil { LoadingView() } else { hint }
                         }
@@ -72,7 +74,7 @@ struct ChatView: View {
                     .padding(.horizontal, 12).padding(.vertical, 10)
                 }
                 .scrollDismissesKeyboard(.interactively)
-                .defaultScrollAnchor(.bottom)
+                .modifier(StickToBottom())
                 .simultaneousGesture(TapGesture().onEnded { focused = false }) // касание по переписке — убрать клавиатуру
                 .onChange(of: messages.last?.id) { _, id in
                     if let id { withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(id, anchor: .bottom) } }
@@ -82,7 +84,10 @@ struct ChatView: View {
                 }
                 .onChange(of: focused) { _, f in
                     if f { attachOpen = false }
-                    if f, let id = messages.last?.id { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { withAnimation { proxy.scrollTo(id, anchor: .bottom) } } }
+                    // iOS 18+ держит низ переписки сам (StickToBottom); на iOS 17 — докручиваем, когда клавиатура уже открылась.
+                    if #unavailable(iOS 18.0) {
+                        if f, let id = messages.last?.id { DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { proxy.scrollTo(id, anchor: .bottom) } }
+                    }
                 }
             }
             .overlay(alignment: .bottomLeading) {
@@ -634,6 +639,21 @@ struct ChatView: View {
 }
 
 // Свайп пузыря вправо — ответить на это сообщение.
+/// Переписка «прилипает» к низу: при открытии и закрытии клавиатуры, при новых сообщениях последние остаются над полем —
+/// без прыжков и доводки scrollTo (iOS 18+). На iOS 17 такой настройки нет — только начальная позиция внизу.
+struct StickToBottom: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content
+                .defaultScrollAnchor(.bottom, for: .initialOffset)
+                .defaultScrollAnchor(.bottom, for: .sizeChanges)
+                .defaultScrollAnchor(.bottom, for: .alignment)
+        } else {
+            content.defaultScrollAnchor(.bottom)
+        }
+    }
+}
+
 struct SwipeToReply: ViewModifier {
     let enabled: Bool
     let action: () -> Void

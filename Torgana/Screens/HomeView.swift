@@ -38,7 +38,7 @@ struct HomeView: View {
         return q
     }
 
-    private var title: String { app.config?.category(category)?.name ?? "Свежие объявления" }
+    private var title: String { app.config?.category(category)?.name ?? "Все объявления" }
 
     private var searchBar: some View {
         SearchCapsule(city: app.city, onField: {

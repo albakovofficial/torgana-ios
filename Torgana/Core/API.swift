@@ -23,6 +23,9 @@ final class API {
         cfg.httpShouldSetCookies = true
         cfg.httpCookieAcceptPolicy = .always
         cfg.timeoutIntervalForRequest = 20
+        // Сеть на телефоне пропадает на секунды (лифт, смена Wi-Fi на мобильную) — подождать её, а не сразу «нет связи».
+        cfg.waitsForConnectivity = true
+        cfg.timeoutIntervalForResource = 40
         cfg.requestCachePolicy = .reloadIgnoringLocalCacheData
         cfg.httpAdditionalHeaders = ["User-Agent": "TorganaApp/\(WebController.appVersion) (iOS; native)"]
         session = URLSession(configuration: cfg)
@@ -71,7 +74,28 @@ final class API {
             req.timeoutInterval = 180
         }
         let data: Data, resp: URLResponse
-        do { (data, resp) = try await session.data(for: req) } catch { throw APIError.offline }
+        do {
+            // Чтение (GET) не отменяется вместе с экраном: SwiftUI отменяет .task/.refreshable при перерисовке,
+            // и раньше отменённый запрос показывался как «Нет связи с сервером». Плюс один повтор при обрыве связи
+            // (после возврата приложения из фона первый запрос часто падает с «соединение потеряно»).
+            if method == "GET" {
+                let request = req
+                (data, resp) = try await Task.detached { [session] in
+                    do { return try await session.data(for: request) } catch let e as URLError where API.retryable.contains(e.code) {
+                        try await Task.sleep(nanoseconds: 600_000_000)
+                        return try await session.data(for: request)
+                    }
+                }.value
+            } else {
+                (data, resp) = try await session.data(for: req)
+            }
+        } catch let e as URLError where e.code == .cancelled {
+            throw CancellationError() // отменили сами (крестик загрузки) — не ошибка связи
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw APIError.offline
+        }
         let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status) else {
             let msg = (try? decoder.decode(ErrorBody.self, from: data))?.error
@@ -87,6 +111,7 @@ final class API {
     }
 
     private struct ErrorBody: Decodable { let error: String? }
+    private static let retryable: Set<URLError.Code> = [.networkConnectionLost, .timedOut, .cannotConnectToHost, .dnsLookupFailed, .cannotFindHost, .notConnectedToInternet, .secureConnectionFailed]
 }
 
 // Любой JSON — для ответов, где нужно одно-два поля.

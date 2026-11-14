@@ -84,6 +84,8 @@ final class Feed: ObservableObject {
         await load(reset: true, gen: gen)
     }
 
+    func retry() { Task { await reload(query) } }
+
     func more() {
         guard !loading, !done, error == nil else { return }
         let g = gen
@@ -102,6 +104,8 @@ final class Feed: ObservableObject {
             items = reset ? page.items : items + page.items.filter { n in !items.contains { $0.id == n.id } }
             total = page.total
             done = page.items.count < 24
+        } catch is CancellationError {
+            return
         } catch {
             guard g == gen else { return }
             if reset { items = [] }
@@ -118,7 +122,7 @@ struct FeedView: View {
     var body: some View {
         if feed.items.isEmpty {
             if feed.loading { LoadingView() }
-            else if let e = feed.error { EmptyState(title: "Не загрузилось", text: e) }
+            else if let e = feed.error { EmptyState(title: "Не загрузилось", text: e, button: "Повторить") { feed.retry() } }
             else { EmptyState(title: emptyTitle, text: emptyText) }
         } else {
             ListingGrid(items: feed.items) { feed.more() }

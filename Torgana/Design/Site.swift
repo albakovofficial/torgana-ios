@@ -169,7 +169,7 @@ struct SettingsRow: View {
                     .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(color))
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title).font(.on(15.5, .medium)).foregroundStyle(T.text).lineLimit(1)
-                    if let sub, !sub.isEmpty { Text(sub).font(.on(12.5)).foregroundStyle(T.muted).lineLimit(1) }
+                    if let sub, !sub.isEmpty { Text(sub).font(.on(12.5)).foregroundStyle(T.muted).lineLimit(2).fixedSize(horizontal: false, vertical: true) }
                 }
                 Spacer(minLength: 6)
                 CountBadge(n: badge)

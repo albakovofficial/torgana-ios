@@ -107,7 +107,11 @@ private struct ProfileEditForm: View {
                 .buttonStyle(TButton(kind: .accent, height: 52))
                 .disabled(saving || name.trimmingCharacters(in: .whitespaces).isEmpty)
         }
-        .onAppear { name = app.me?.name ?? ""; city = app.me?.city ?? ""; phone = app.me?.phone ?? "" }
+        // Профиль может прийти с сервера позже, чем открылся экран, — заполнить поля, как только он есть.
+        .onChange(of: app.me?.id, initial: true) { _, _ in
+            guard let me = app.me, name.isEmpty else { return }
+            name = me.name; city = me.city ?? ""; phone = me.phone ?? ""
+        }
         .onChange(of: photo) { _, item in if let item { Task { await upload(item) } } }
         .sheet(isPresented: $cityPicker) { CityPicker(city: $city) }
     }

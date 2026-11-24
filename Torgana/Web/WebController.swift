@@ -51,7 +51,10 @@ final class WebController: NSObject {
         let app = "window.TorganaApp = { platform: 'ios', version: '" + appVersion + "', native: " + (embedded ? "true" : "false") + ", push: 'app', "
             + "post: function (msg) { try { window.webkit.messageHandlers.torgana.postMessage(msg); } catch (e) {} } };"
         let classes = embedded ? "'in-app', 'in-app-ios', 'in-app-native'" : "'in-app', 'in-app-ios'"
-        let css = "#header, #footer, #bottom-nav, .cookie-bar { display: none !important; } "
+        // Свои «‹ Назад» у разделов сайта прячем — у экрана есть родная (она же листает историю страницы назад).
+        // Фон страницы прозрачный: под ней родной фон экрана, без шва под кнопкой «Назад».
+        let css = "#header, #footer, #bottom-nav, .cookie-bar, .pf-back, .setx-back, .chat-back { display: none !important; } "
+            + "html, body { background: transparent !important; } "
             + "#app { min-height: 0 !important; padding-bottom: 110px; }"
         let style = embedded
             ? "var st = document.createElement('style'); st.textContent = '" + css + "'; (document.head || document.documentElement).appendChild(st);"
@@ -273,7 +276,7 @@ struct WebScreen: View {
         } else {
             // Раздел сайта внутри приложения: шапка и нижнее меню — родные, как на остальных экранах.
             VStack(alignment: .leading, spacing: 0) {
-                BackLink().padding(.horizontal, 20)
+                BackLink { if page.web.canGoBack { page.web.goBack() } else { dismiss() } }.padding(.horizontal, 20)
                 WebPageView(page: page)
             }
             .sitePage()

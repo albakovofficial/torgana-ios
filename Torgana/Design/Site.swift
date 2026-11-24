@@ -320,9 +320,11 @@ extension View {
 /// «‹ Мои объявления» над заголовком (.pf-back сайта): 15/600, приглушённый.
 struct BackLink: View {
     var title = "Назад"
+    /// Своё действие (страница сайта: сначала назад по её истории); по умолчанию — закрыть экран.
+    var action: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     var body: some View {
-        Button { dismiss() } label: {
+        Button { if let action { action() } else { dismiss() } } label: {
             HStack(spacing: 4) {
                 Image(systemName: "chevron.left").font(.system(size: 15, weight: .semibold))
                 Text(title).font(.on(15, .semibold))

@@ -13,6 +13,7 @@ enum Route: Hashable {
     case user(Int)
     case doc(String)
     case web(String)
+    case settings(SettingsSection)
 
     /// /l/123-velosiped → .listing(123); /search?q=… и /c/… → поиск; остальное — страница сайта.
     static func from(path raw: String) -> Route? {
@@ -69,7 +70,12 @@ final class Nav: ObservableObject {
         case "/new": tab = .post; paths[.post] = NavigationPath(); return
         case "/profile": tab = .profile; paths[.profile] = NavigationPath(); return
         case "/profile/listings": tab = .profile; paths[.profile] = NavigationPath([Route.myListings]); return
+        case "/profile/settings": tab = .profile; paths[.profile] = NavigationPath(); return   // настройки — в профиле
         default: break
+        }
+        // Разделы настроек сайта (#sf, #sn…) — родные экраны; «Пароль и вход» и «Для бизнеса» остаются страницами сайта.
+        if clean.hasPrefix("/profile/settings#"), let s = SettingsSection(hash: String(clean.split(separator: "#").last ?? "")) {
+            tab = .profile; paths[.profile] = NavigationPath([Route.settings(s)]); return
         }
         if clean.hasPrefix("/messages") {
             // Переписка — во вкладке «Сообщения», поверх списка.
@@ -154,6 +160,7 @@ struct RouteView: View {
         case .user(let id): UserView(id: id)
         case .doc(let slug): DocView(slug: slug)
         case .web(let path): WebScreen(path: path)
+        case .settings(let s): SettingsScreen(section: s)
         }
     }
 }

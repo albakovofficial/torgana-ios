@@ -1,20 +1,54 @@
 import SwiftUI
 
-// Профиль — как «Мой профиль» сайта на телефоне: карточка (аватарка с камерой, имя, город, уровень, медаль, настройки),
-// цифры, «Профиль заполнен», плитки разделов и «Мои объявления» по статусам прямо здесь.
+// Профиль (вариант B, 24.11): карточка с переходом цвета (аватарка, имя, уровень, цифры), четыре плитки — объявления,
+// сообщения, сделки и отзывы, подписки; модерация — только администраторам; настройки и помощь — списками; «Выйти» — внизу.
+// Каждый раздел — в одном месте: меню шапки ведёт сюда.
 struct ProfileView: View {
+    @AppStorage("theme") private var theme = ""   // подпись «Оформление» меняется сразу
     @EnvironmentObject private var app: AppState
     @EnvironmentObject private var nav: Nav
     @StateObject private var store = MyListingsStore()
+    @State private var admin: AdminStats?
+    @State private var confirmLogout = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 if let me = app.me {
-                    card(me).padding(.top, 12)
-                    tiles.padding(.top, 14)
-                    Text("Мои объявления").font(.on(28, .heavy)).foregroundStyle(T.text).padding(.top, 30)
-                    MyListingsSection(store: store).padding(.top, 16)
+                    hero(me).padding(.top, 12)
+                    tiles(me).padding(.top, 14)
+                    if me.isAdmin == true { moderation.padding(.top, 12) }
+                    SettingsGroup {
+                        SettingsRow(icon: "eye", color: Tint.blue, title: "Как меня видят покупатели", last: true) { nav.push(.user(me.id)) }
+                    }
+                    .padding(.top, 22)
+                    SettingsGroup(title: "Настройки") {
+                        SettingsRow(icon: "person.fill", color: Tint.blue, title: "Профиль", sub: "Фото, имя, город, телефон") { nav.push(.settings(.profile)) }
+                        SettingsRow(icon: "bell.fill", color: Tint.red, title: "Уведомления", sub: "Push на этом iPhone и письма") { nav.push(.settings(.notify)) }
+                        SettingsRow(icon: "lock.fill", color: Tint.sky, title: "Пароль и вход", sub: "Почта, Apple, Яндекс, VK") { nav.push(.web("/profile/settings#sp")) }
+                        SettingsRow(icon: "moon.fill", color: Tint.indigo, title: "Оформление", sub: LookSettings.title) { nav.push(.settings(.look)) }
+                        SettingsRow(icon: "nosign", color: Tint.gray, title: "Чёрный список", sub: "Кому нельзя вам писать") { nav.push(.settings(.blocks)) }
+                        SettingsRow(icon: "briefcase.fill", color: Tint.orange, title: "Для бизнеса", sub: "Витрина и значок «ИП проверен»") { nav.push(.web("/profile/settings#s-biz")) }
+                        SettingsRow(icon: "envelope.fill", color: Tint.violet, title: "Аккаунт", sub: me.email ?? "", last: true) { nav.push(.settings(.account)) }
+                    }
+                    .padding(.top, 22)
+                    SettingsGroup(title: "Помощь") {
+                        SettingsRow(icon: "headphones", color: Tint.green, title: "Поддержка", sub: "Отвечают люди, а не боты") { nav.push(.support) }
+                        SettingsRow(icon: "questionmark", color: Tint.sky, title: "Помощь и безопасность") { nav.push(.web("/page/help")) }
+                        SettingsRow(icon: "doc.text", color: Tint.gray, title: "Правила и документы", last: true) { nav.push(.doc("rules")) }
+                    }
+                    .padding(.top, 22)
+                    Button { confirmLogout = true } label: {
+                        Label("Выйти", systemImage: "rectangle.portrait.and.arrow.right")
+                            .font(.on(16, .semibold)).foregroundStyle(T.danger)
+                            .frame(maxWidth: .infinity).frame(height: 50)
+                            .background(Capsule().fill(T.card))
+                            .overlay(Capsule().strokeBorder(T.line, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 22)
+                    Text("Торгана \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "") (\(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""))")
+                        .font(.on(12)).foregroundStyle(T.faint).frame(maxWidth: .infinity).padding(.top, 12)
                 } else {
                     guest
                 }
@@ -23,8 +57,17 @@ struct ProfileView: View {
             TabBarSpace()
         }
         .sitePage()
-        .refreshable { await app.refreshMe(); await store.load() }
-        .task(id: app.me?.id) { if app.me != nil { await store.load() } }
+        .refreshable { await app.refreshMe(); await reload() }
+        .task(id: app.me?.id) { await reload() }
+        .confirmationDialog("Выйти из профиля?", isPresented: $confirmLogout, titleVisibility: .visible) {
+            Button("Выйти", role: .destructive) { Task { await app.logout() } }
+        }
+    }
+
+    private func reload() async {
+        guard let me = app.me else { return }
+        await store.load()
+        if me.isAdmin == true { admin = try? await API.shared.get("/api/admin/stats") }
     }
 
     private var guest: some View {
@@ -35,123 +78,140 @@ struct ProfileView: View {
                 .font(.on(16)).foregroundStyle(T.muted).multilineTextAlignment(.center)
             Button("Войти") { app.needLogin = true }.buttonStyle(TButton(kind: .dark)).padding(.top, 6)
             Button("Создать профиль") { app.needLogin = true }.buttonStyle(TButton(kind: .soft))
+            SettingsGroup {
+                SettingsRow(icon: "headphones", color: Tint.green, title: "Поддержка") { nav.push(.support) }
+                SettingsRow(icon: "doc.text", color: Tint.gray, title: "Правила и документы", last: true) { nav.push(.doc("rules")) }
+            }
+            .padding(.top, 10)
         }
         .frame(maxWidth: .infinity)
     }
 
-    // .pf-card: --surface, скругление 28, внутри 20.
-    private func card(_ me: Me) -> some View {
-        let todo = todoItems(me)
-        let pct = Int((Double(3 - todo.count) / 3 * 100).rounded())
-        return VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 14) {
-                Avatar(name: me.name, url: me.avatar, size: 72)
-                    .overlay(alignment: .bottomTrailing) {
-                        Button { nav.push(.web("/profile/settings")) } label: {
-                            Image(systemName: "camera").font(.system(size: 13, weight: .semibold)).foregroundStyle(T.text)
-                                .frame(width: 32, height: 32)
-                                .background(Circle().fill(T.card))
-                                .overlay(Circle().strokeBorder(T.surface, lineWidth: 3))
+    private var active: Int { store.items.filter { $0.status == "active" }.count }
+
+    // Карточка: фирменный переход цвета, скругление 26; аватарка 64 с камерой, шестерёнка — профиль; три цифры.
+    private func hero(_ me: Me) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .center, spacing: 14) {
+                Button { nav.push(.settings(.profile)) } label: {
+                    Avatar(name: me.name, url: me.avatar, size: 64)
+                        .overlay(Circle().strokeBorder(.white.opacity(0.5), lineWidth: 3))
+                        .overlay(alignment: .bottomTrailing) {
+                            Image(systemName: "camera.fill").font(.system(size: 11, weight: .semibold)).foregroundStyle(T.accent)
+                                .frame(width: 26, height: 26).background(Circle().fill(.white)).offset(x: 4, y: 4)
                         }
-                        .buttonStyle(.plain)
-                        .offset(x: 6, y: 6)
-                        .accessibilityLabel(me.avatar == nil ? "Добавить фото профиля" : "Сменить фото профиля")
-                    }
-                VStack(alignment: .leading, spacing: 4) {
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(me.avatar == nil ? "Добавить фото профиля" : "Сменить фото профиля")
+                VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
-                        Text(me.name).font(.on(18, .bold)).foregroundStyle(T.text).lineLimit(2)
-                        if me.badges?.official == true { Verified(size: 22) }
+                        Text(me.name).font(.on(20, .heavy)).foregroundStyle(.white).lineLimit(1)
+                        if me.badges?.official == true { Verified(size: 20) }
                     }
-                    Text([me.city, "на Торгане с \(Fmt.monthYear(me.createdAt))"].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
-                        .font(.on(13)).foregroundStyle(T.muted).fixedSize(horizontal: false, vertical: true)
-                    RepLine(rep: me.rep, medal: me.badges?.first).padding(.top, 2)
+                    Text([me.city, "с \(Fmt.monthYear(me.createdAt))"].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
+                        .font(.on(13)).foregroundStyle(.white.opacity(0.85)).lineLimit(1)
+                    if let lvl = me.rep?.levelName {
+                        HStack(spacing: 6) {
+                            LevelCoin(level: me.rep?.level ?? 0, size: 18)
+                            Text(lvl).font(.on(12.5, .bold)).foregroundStyle(.white)
+                        }
+                        .padding(.leading, 4).padding(.trailing, 10).frame(height: 26)
+                        .background(Capsule().fill(.white.opacity(0.18)))
+                        .padding(.top, 4)
+                    }
                 }
                 Spacer(minLength: 0)
-                Button { nav.push(.web("/profile/settings")) } label: { RoundIcon(icon: "gearshape", fill: T.card) }
-                    .buttonStyle(.plain).accessibilityLabel("Настройки")
+                Button { nav.push(.settings(.profile)) } label: {
+                    Image(systemName: "gearshape").font(.system(size: 18, weight: .medium)).foregroundStyle(.white)
+                        .frame(width: 40, height: 40).background(Circle().fill(.white.opacity(0.16)))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Профиль и фото")
             }
             HStack(spacing: 8) {
-                stat(store.items.filter { $0.status == "active" }.count, store.items.filter { $0.status == "active" }.count == 1 ? "активное" : "активных")
-                stat(store.items.filter { $0.status == "sold" }.count, "продано")
-            }
-            if !todo.isEmpty {
-                VStack(alignment: .leading, spacing: 0) {
-                    HStack(spacing: 8) {
-                        Text("Профиль заполнен").font(.on(13, .semibold)).foregroundStyle(T.text)
-                        Spacer()
-                        Text("\(pct)%").font(.on(13, .heavy)).foregroundStyle(T.accent)
-                    }
-                    GeometryReader { g in
-                        ZStack(alignment: .leading) {
-                            Capsule().fill(T.line)
-                            Capsule().fill(T.accentFill).frame(width: g.size.width * CGFloat(pct) / 100)
-                        }
-                    }
-                    .frame(height: 8)
-                    .padding(.top, 9)
-                    ForEach(Array(todo.enumerated()), id: \.offset) { _, t in
-                        Button { nav.push(.web("/profile/settings")) } label: {
-                            HStack(spacing: 10) {
-                                Circle().strokeBorder(T.faint, style: StrokeStyle(lineWidth: 2, dash: [3, 3])).frame(width: 18, height: 18)
-                                Text(t.0).font(.on(14)).foregroundStyle(T.text)
-                                Spacer()
-                                Text(t.1).font(.on(13.5, .bold)).foregroundStyle(T.accent)
-                            }
-                            .frame(height: 40)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(.top, 8)
-                }
+                num(active, Fmt.plural(active, "активное", "активных", "активных")) { nav.push(.myListings) }
+                num(store.items.filter { $0.status == "sold" }.count, "продано") { nav.push(.myListings) }
+                num(me.rep?.deals ?? 0, Fmt.plural(me.rep?.deals ?? 0, "сделка", "сделки", "сделок")) { nav.push(.web("/profile/reputation")) }
             }
         }
-        .padding(20)
-        .background(RoundedRectangle(cornerRadius: 28, style: .continuous).fill(T.surface))
+        .padding(18)
+        .background(RoundedRectangle(cornerRadius: 26, style: .continuous).fill(T.grad))
     }
 
-    /// Что ещё заполнить — как profileTodo сайта (без витрины магазина): фото и город.
-    private func todoItems(_ me: Me) -> [(String, String)] {
-        var t: [(String, String)] = []
-        if (me.avatar ?? "").isEmpty { t.append(("Фото профиля", "Добавить")) }
-        if (me.city ?? "").isEmpty { t.append(("Город", "Указать")) }
-        return t
-    }
-
-    private func stat(_ n: Int, _ label: String) -> some View {
-        Button { nav.push(.myListings) } label: {
+    private func num(_ n: Int, _ label: String, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
             VStack(alignment: .leading, spacing: 0) {
-                Text("\(n)").font(.on(21, .heavy)).foregroundStyle(T.text)
-                Text(label).font(.on(12)).foregroundStyle(T.muted)
+                Text("\(n)").font(.on(18, .heavy)).foregroundStyle(.white)
+                Text(label).font(.on(12)).foregroundStyle(.white.opacity(0.85)).lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 14).padding(.vertical, 12)
-            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(T.card))
+            .padding(.horizontal, 10).padding(.vertical, 8)
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.white.opacity(0.14)))
         }
         .buttonStyle(.plain)
     }
 
-    // Плитки разделов: белые, обводка, скругление 18, высота 56, 15/600.
-    private var tiles: some View {
-        let cols = [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)]
-        return LazyVGrid(columns: cols, spacing: 8) {
-            tile("message", "Сообщения") { nav.open(path: "/messages") }
-            tile("heart", "Избранное") { nav.open(path: "/favorites") }
-            tile("person.2", "Подписки") { nav.push(.web("/profile/following")) }
-            tile("star", "Репутация") { nav.push(.web("/profile/reputation")) }
+    // Четыре крупные плитки со счётчиками.
+    private func tiles(_ me: Me) -> some View {
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+            tile("square.grid.2x2", Tint.blue, "Мои объявления", "\(active) \(Fmt.plural(active, "активное", "активных", "активных"))") { nav.push(.myListings) }
+            tile("message", Tint.green, "Сообщения", app.unread > 0 ? "\(app.unread) \(Fmt.plural(app.unread, "новое", "новых", "новых"))" : "Переписки", badge: app.unread) { nav.open(path: "/messages") }
+            tile("star", Tint.orange, "Сделки и отзывы", (me.rep?.deals ?? 0) > 0 ? "\(me.rep?.deals ?? 0) \(Fmt.plural(me.rep?.deals ?? 0, "сделка", "сделки", "сделок"))" : "Пока нет") { nav.push(.web("/profile/reputation")) }
+            tile("person.2", Tint.violet, "Подписки", "Продавцы и новинки") { nav.push(.web("/profile/following")) }
         }
     }
 
-    private func tile(_ icon: String, _ title: String, _ action: @escaping () -> Void) -> some View {
+    private func tile(_ icon: String, _ color: Color, _ title: String, _ sub: String, badge: Int = 0, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack(spacing: 10) {
-                Image(systemName: icon).font(.system(size: 17, weight: .regular)).foregroundStyle(T.accent).frame(width: 22)
-                Text(title).font(.on(15, .semibold)).foregroundStyle(T.text).lineLimit(1)
-                Spacer(minLength: 0)
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .top) {
+                    Image(systemName: icon).font(.system(size: 18, weight: .medium)).foregroundStyle(color)
+                        .frame(width: 40, height: 40)
+                        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(color.opacity(0.12)))
+                    Spacer()
+                    CountBadge(n: badge)
+                }
+                Spacer(minLength: 10)
+                Text(title).font(.on(15.5, .bold)).foregroundStyle(T.text).lineLimit(1)
+                Text(sub).font(.on(12.5)).foregroundStyle(T.muted).lineLimit(1)
             }
-            .padding(.horizontal, 12).frame(height: 56)
-            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(T.card))
-            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(T.line, lineWidth: 1))
+            .padding(14)
+            .frame(maxWidth: .infinity, minHeight: 116, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(T.card))
+            .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(T.line, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+
+    // Модерация — только администраторам: что ждёт решения; открывается модерация сайта.
+    private var moderation: some View {
+        let a = admin
+        let parts: [String] = [
+            (a?.pending ?? 0) > 0 ? "\(a!.pending!) на проверке" : nil,
+            (a?.reports ?? 0) > 0 ? "\(a!.reports!) \(Fmt.plural(a!.reports!, "жалоба", "жалобы", "жалоб"))" : nil,
+            (a?.support ?? 0) > 0 ? "\(a!.support!) в поддержке" : nil,
+            (a?.appeals ?? 0) > 0 ? "\(a!.appeals!) \(Fmt.plural(a!.appeals!, "обжалование", "обжалования", "обжалований"))" : nil
+        ].compactMap { $0 }
+        return Button { nav.push(.web("/admin")) } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "checkmark.shield.fill").font(.system(size: 19, weight: .semibold)).foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
+                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(T.accentFill))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Модерация").font(.on(15.5, .bold)).foregroundStyle(T.text)
+                    Text(a == nil ? "Загружаем…" : parts.isEmpty ? "Всё разобрано" : parts.joined(separator: " · "))
+                        .font(.on(12.5)).foregroundStyle(T.muted).lineLimit(2)
+                }
+                Spacer(minLength: 6)
+                if let t = a?.total, t > 0 {
+                    Text("\(t)").font(.on(12, .bold)).foregroundStyle(.white)
+                        .padding(.horizontal, 7).frame(minWidth: 24, minHeight: 24).background(Capsule().fill(T.danger))
+                }
+                Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundStyle(T.faint)
+            }
+            .padding(.horizontal, 14).padding(.vertical, 12)
+            .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(T.card))
+            .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(T.accent, lineWidth: 1.5))
         }
         .buttonStyle(.plain)
     }

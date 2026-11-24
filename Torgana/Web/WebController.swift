@@ -59,7 +59,7 @@ final class WebController: NSObject {
         let mark = "var mark = function () { document.documentElement.classList.add(" + classes + "); " + style + " };"
             + "if (document.documentElement) mark(); else document.addEventListener('DOMContentLoaded', mark);"
         let links = embedded ? #"""
-          var NATIVE = /^\/(?:$|l\/\d+|search$|c\/|favorites$|messages(?:\/(?:\d+|support))?$|u\/\d+$|edit\/\d+$|new$)/;
+          var NATIVE = /^\/(?:$|l\/\d+|search$|c\/|favorites$|messages(?:\/(?:\d+|support))?$|u\/\d+$|edit\/\d+$|new$|profile(?:\/listings)?$)/;
           window.addEventListener('click', function (e) {
             var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
             if (!a || a.target === '_blank' || a.hasAttribute('download')) return;

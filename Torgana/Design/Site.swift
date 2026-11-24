@@ -98,80 +98,101 @@ struct SiteMenu: View {
     @EnvironmentObject private var app: AppState
     @EnvironmentObject private var nav: Nav
     @Environment(\.dismiss) private var dismiss
-    @State private var confirmLogout = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 if let me = app.me {
-                    HStack(spacing: 12) {
-                        Avatar(name: me.name, url: me.avatar, size: 48)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(me.name).font(.on(17, .bold)).foregroundStyle(T.text)
-                            Text(me.email ?? "").font(.on(13)).foregroundStyle(T.muted)
+                    Button { go("/profile") } label: {
+                        HStack(spacing: 12) {
+                            Avatar(name: me.name, url: me.avatar, size: 48)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(me.name).font(.on(17, .bold)).foregroundStyle(T.text)
+                                Text("Профиль и настройки").font(.on(13)).foregroundStyle(T.muted)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundStyle(T.faint)
                         }
+                        .padding(14)
+                        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(T.surface))
                     }
-                    .padding(.horizontal, 6)
-                    VStack(spacing: 0) {
-                        row("person", "Мой профиль") { go("/profile") }
-                        row("square.grid.2x2", "Мои объявления") { go("/profile/listings") }
-                        row("message", "Сообщения") { go("/messages") }
-                        row("heart", "Избранное") { go("/favorites") }
-                        row("person.2", "Подписки") { go("/profile/following") }
-                        row("star", "Репутация") { go("/profile/reputation") }
-                        row("gearshape", "Настройки") { go("/profile/settings") }
-                    }
-                    .panel(radius: 24, padding: 6)
+                    .buttonStyle(.plain)
                 } else {
                     Button("Войти или зарегистрироваться") { dismiss(); app.needLogin = true }.buttonStyle(TButton(kind: .dark))
                 }
-                VStack(spacing: 0) {
-                    row("headphones", "Поддержка") { go("/messages/support") }
-                    row("questionmark.circle", "Помощь") { go("/page/help") }
-                    row("doc.text", "Правила и документы") { go("/page/rules") }
-                    if app.me != nil { row("rectangle.portrait.and.arrow.right", "Выйти", danger: true) { confirmLogout = true } }
+                SettingsGroup {
+                    SettingsRow(icon: "headphones", color: Tint.green, title: "Поддержка", sub: "Отвечают люди, а не боты") { go("/messages/support") }
+                    SettingsRow(icon: "questionmark", color: Tint.sky, title: "Помощь и безопасность") { go("/page/help") }
+                    SettingsRow(icon: "doc.text", color: Tint.gray, title: "Правила и документы", last: true) { go("/page/rules") }
                 }
-                .panel(radius: 24, padding: 6)
             }
             .padding(20)
         }
         .background(T.bg)
-        .confirmationDialog("Выйти из профиля?", isPresented: $confirmLogout, titleVisibility: .visible) {
-            Button("Выйти", role: .destructive) { Task { await app.logout(); dismiss() } }
-        }
     }
 
     private func go(_ path: String) { dismiss(); nav.open(path: path) }
+}
 
-    private func row(_ icon: String, _ title: String, danger: Bool = false, _ action: @escaping () -> Void) -> some View {
-        MenuRow(icon: icon, title: title, danger: danger, action: action)
+/// Группа строк, как в «Настройках» iPhone: белая карточка с обводкой, скругление 20, тонкие разделители.
+struct SettingsGroup<Content: View>: View {
+    var title: String? = nil
+    @ViewBuilder let content: () -> Content
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let title {
+                Text(title.uppercased()).font(.on(12, .semibold)).kerning(0.5).foregroundStyle(T.muted).padding(.horizontal, 4)
+            }
+            VStack(spacing: 0) { content() }
+                .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(T.card))
+                .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(T.line, lineWidth: 1))
+                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        }
     }
 }
 
-/// Строка меню: значок, название, стрелка.
-struct MenuRow: View {
+/// Строка настроек: цветной квадрат со значком (белый значок, как в «Настройках» iPhone), название, пояснение, справа — счётчик и стрелка.
+struct SettingsRow: View {
     let icon: String
+    let color: Color
     let title: String
     var sub: String? = nil
-    var danger = false
+    var badge = 0
+    var last = false
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 14) {
-                Image(systemName: icon).font(.system(size: 17, weight: .medium)).frame(width: 26).foregroundStyle(danger ? T.danger : T.accent)
+            HStack(spacing: 12) {
+                Image(systemName: icon).font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
+                    .frame(width: 32, height: 32)
+                    .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(color))
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(title).font(.on(16, .medium)).foregroundStyle(danger ? T.danger : T.text)
-                    if let sub { Text(sub).font(.on(13)).foregroundStyle(T.muted) }
+                    Text(title).font(.on(15.5, .medium)).foregroundStyle(T.text).lineLimit(1)
+                    if let sub, !sub.isEmpty { Text(sub).font(.on(12.5)).foregroundStyle(T.muted).lineLimit(1) }
                 }
-                Spacer()
-                if !danger { Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundStyle(T.faint) }
+                Spacer(minLength: 6)
+                CountBadge(n: badge)
+                Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundStyle(T.faint)
             }
-            .padding(.horizontal, 14).frame(minHeight: 54)
+            .padding(.horizontal, 14).frame(minHeight: 56)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .overlay(alignment: .bottom) { if !last { T.line.opacity(0.6).frame(height: 1).padding(.leading, 58) } }
     }
+}
+
+/// Цвета значков настроек (насыщенные, как в iOS).
+enum Tint {
+    static let blue = Color(hex: 0x3963CC)
+    static let sky = Color(hex: 0x2E8BEA)
+    static let green = Color(hex: 0x2FA45F)
+    static let red = Color(hex: 0xE5484D)
+    static let violet = Color(hex: 0x8A5CF0)
+    static let indigo = Color(hex: 0x5B5FD6)
+    static let orange = Color(hex: 0xE9A23B)
+    static let gray = Color(hex: 0x7A8094)
 }
 
 /// Поиск сайта (.home-search): белая «таблетка» 50 с обводкой, внутри — город (36, --surface) и круглая синяя кнопка 36.

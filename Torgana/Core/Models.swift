@@ -36,11 +36,13 @@ struct AppConfig: Codable {
     let supportEmail: String?
     let oauth: [String: Bool]?
     let operatorInfo: Operator?
+    /// Письма включены на сервере — тогда в настройках есть переключатели «Почта».
+    let mail: Bool?
 
     struct Operator: Codable { let name: String?; let inn: String?; let ogrnip: String? }
 
     enum CodingKeys: String, CodingKey {
-        case categories, cities, priceUnits, subcategories, supportEmail, oauth
+        case categories, cities, priceUnits, subcategories, supportEmail, oauth, mail
         case operatorInfo = "operator"
     }
 
@@ -76,7 +78,37 @@ struct Me: Codable, Hashable {
     let rep: Rep?
     let badges: Badges?
     let deactivatedAt: Double?
+    let phone: String?
+    let emailVerified: Bool?
+    // Уведомления (NOTIFY_FIELDS сайта): push — на iPhone и в браузере, notify — письмом.
+    let pushMessages: Bool?
+    let pushSearches: Bool?
+    let pushPrices: Bool?
+    let pushModeration: Bool?
+    let notifyMessages: Bool?
+    let notifyDigest: Bool?
+    let notifyModeration: Bool?
 }
+
+/// Счётчики модерации для администратора (GET /api/admin/stats).
+struct AdminStats: Codable {
+    let pending: Int?
+    let reports: Int?
+    let support: Int?
+    let appeals: Int?
+    let biz: Int?
+    let rep: Int?
+    var total: Int { [pending, reports, support, appeals, biz, rep].compactMap { $0 }.reduce(0, +) }
+}
+
+struct BlockedUser: Codable, Identifiable, Hashable {
+    let id: Int
+    let name: String?
+    let avatar: String?
+    let at: Double?
+}
+
+struct BlockList: Codable { let items: [BlockedUser] }
 
 struct MeResponse: Codable {
     let user: Me?

@@ -15,7 +15,7 @@ struct TorganaApp: App {
                 .environmentObject(nav)
                 .font(.on(16))
                 .tint(T.accent)
-                .onAppear { app.start() }
+                .onAppear { app.start(); LookSettings.apply() }
                 .onOpenURL { Router.shared.open($0) }
                 .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
                     if let url = activity.webpageURL { Router.shared.open(url) }

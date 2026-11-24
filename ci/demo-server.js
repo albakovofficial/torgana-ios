@@ -11,7 +11,8 @@ const H = 3600e3;
 const config = JSON.parse(fs.readFileSync(path.join(DIR, 'config.json'), 'utf8'));
 
 const seller = { id: 2, name: 'Анна Смирнова', avatar: null, level: 2, shop: false };
-const me = { id: 1, name: 'Ибрагим', email: 'demo@torgana.ru', city: 'Москва', avatar: null, isAdmin: false, createdAt: now - 20 * 24 * H,
+const me = { id: 1, name: 'Ибрагим', email: 'demo@torgana.ru', city: 'Москва', avatar: null, isAdmin: true, phone: '', emailVerified: true,
+  pushMessages: true, pushSearches: true, pushPrices: false, pushModeration: true, notifyMessages: true, notifyDigest: false, notifyModeration: true, createdAt: now - 20 * 24 * H,
   rep: { level: 1, levelName: 'Проверенный', deals: 3 }, badges: { official: false, shop: false, first: { no: 7, form: 'm', own: '' } }, deactivatedAt: null };
 const items = [
   ['Велосипед Merida Big Nine 2023', 45000, 'Казань', 'hobby', 'hobby'], ['iPhone 15 Pro 256 ГБ, как новый', 89990, 'Москва', 'electronics', 'phones'],
@@ -81,6 +82,8 @@ http.createServer((req, res) => {
   if (p === '/api/pages/rules') return json(res, { title: 'Правила размещения', html: '<p>Все объявления на Торгане проходят модерацию. Объявление публикуется, если оно соответствует правилам.</p><h2>Запрещено</h2><ul><li>оружие и боеприпасы;</li><li>лекарства по рецепту;</li><li>поддельные товары.</li></ul><p>Подробнее — в <a href="/page/terms">пользовательском соглашении</a>.</p>' });
   if (p === '/api/support') return json(res, { messages: [] });
   if (p === '/api/my/listings') return json(res, { items: items.slice(0, 3).map((x, i) => ({ ...x, status: ['active', 'pending', 'active'][i], views: 40 + i * 13, favCount: i * 2, rejectReason: '' })) });
+  if (p === '/api/admin/stats') return json(res, { pending: 4, reports: 2, support: 1, appeals: 0, biz: 0, rep: 0 });
+  if (p === '/api/blocks') return json(res, { items: [{ id: 9, name: 'Спамер Иван', avatar: null, at: now - 3 * 24 * H }] });
   if (p === '/api/notices') return json(res, { items: notices, unread: 2 });
   if (p.startsWith('/api/')) return json(res, { ok: true });
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });

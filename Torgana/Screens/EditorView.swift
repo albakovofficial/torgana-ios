@@ -45,6 +45,7 @@ struct EditorView: View {
     @State private var jump: String?
     @State private var pickingCat = false
     @State private var gridW: CGFloat = 0
+    @State private var autoName = ""
 
     private static let stepCount = 3
     private var stepTitle: String { [editId == nil ? "Новое объявление" : "Редактирование", "Что продаёте", "Всё верно?"][step] }
@@ -189,8 +190,8 @@ struct EditorView: View {
     private var whatStep: some View {
         VStack(alignment: .leading, spacing: 10) {
             if pickingCat || category.isEmpty || (!subs.isEmpty && sub.isEmpty) { categoryPicker.padding(.bottom, 6) } else { categoryField }
-            box("Название") {
-                TextField(autoTitle ? "Можно не писать — соберём сами" : "Например: iPhone 15 Pro, 256 ГБ", text: $title).font(.on(16, .semibold))
+            if !autoTitle {
+                box("Название") { TextField("Например: iPhone 15 Pro, 256 ГБ", text: $title).font(.on(16, .semibold)) }
             }
             ForEach(fields, id: \.key) { f in fieldRow(f) }
             box("Цена") {
@@ -314,7 +315,8 @@ struct EditorView: View {
             guard let v = attrs[f.key], !v.isEmpty else { return nil }
             return Spec(label: f.label, value: [v, f.type == "number" ? f.unit : nil].compactMap { $0 }.joined(separator: " "))
         }
-        let l = Listing(id: editId ?? 0, title: title.isEmpty ? (subName ?? "Ваше объявление") : title, description: text, category: category, subcategory: sub,
+        let name = autoTitle ? autoName : title
+        let l = Listing(id: editId ?? 0, title: name.isEmpty ? (subName ?? "Ваше объявление") : name, description: text, category: category, subcategory: sub,
                         price: Int(price.filter(\.isNumber)), priceUnit: priceUnit, priceWas: nil, city: city, metro: nil, district: nil, condition: condition,
                         delivery: delivery, bargain: bargain, exchange: exchange, status: nil, views: nil, favCount: nil,
                         createdAt: Date().timeIntervalSince1970 * 1000, updatedAt: nil, photos: photos.map { $0.url?.absoluteString ?? "" },
@@ -357,6 +359,7 @@ struct EditorView: View {
         if to > step, let e = problem(upTo: to) { stepError = e; Haptics.play("error"); return }
         stepError = nil
         withAnimation(.easeOut(duration: 0.2)) { step = max(0, min(Self.stepCount - 1, to)) }
+        if step == Self.stepCount - 1 { Task { await loadAutoName() } }
     }
 
     private func problem(upTo to: Int) -> String? {
@@ -370,7 +373,17 @@ struct EditorView: View {
         return nil
     }
 
-    private var autoTitle: Bool { ["cars", "moto", "phones", "flats", "flats_rent", "daily", "rooms", "houses", "land", "garages", "commercial"].contains(sub) }
+    private var autoTitle: Bool { subs.first { $0.id == sub }?.auto == true }
+
+    /// Название из характеристик для превью — его же сервер поставит при сохранении.
+    private func loadAutoName() async {
+        guard autoTitle else { autoName = ""; return }
+        var a: [String: JSONValue] = [:]
+        for f in fields { if let v = attrs[f.key], !v.isEmpty { a[f.key] = f.type == "number" ? Double(v.replacingOccurrences(of: ",", with: ".")).map { .number($0) } ?? .string(v) : .string(v) } }
+        struct R: Decodable { let title: String }
+        let r: R? = try? await API.shared.post("/api/listings/title", ["subcategory": JSONValue.string(sub), "attrs": .object(a)])
+        autoName = r?.title ?? ""
+    }
 
     @ViewBuilder private func fieldRow(_ f: FieldDef) -> some View {
         let binding = Binding(get: { attrs[f.key] ?? "" }, set: { attrs[f.key] = $0 })
@@ -561,11 +574,11 @@ struct EditorView: View {
     /// Снимки экрана: «-step 1/2» — открыть шаг с примером объявления.
     private func demoStep() {
         let n = UserDefaults.standard.integer(forKey: "step")
-        guard n > 0, step == 0, let c = app.config?.categories.first else { return }
-        category = c.id; sub = app.config?.subs(c.id).first?.id ?? ""
-        title = "iPhone 15 Pro 256 ГБ"; price = "89990"; condition = "used"; city = city.isEmpty ? "Москва" : city
+        guard n > 0, step == 0, app.config != nil else { return }
+        category = "electronics"; sub = "phones"; attrs = ["brand": "Apple", "model": "iPhone 15 Pro", "memory": "256 ГБ"]
+        price = "89990"; condition = "used"; city = city.isEmpty ? "Москва" : city
         text = "Телефон в идеальном состоянии, носил в чехле и со стеклом с первого дня. Аккумулятор 98%. Полный комплект: коробка, кабель, чек."
-        step = min(n, Self.stepCount - 1)
+        go(min(n, Self.stepCount - 1))
     }
     #endif
 

@@ -26,6 +26,8 @@ struct Subcategory: Codable, Identifiable, Hashable {
     let id: String
     let name: String
     let fields: [FieldDef]?
+    /// Название собирается из характеристик (машины, телефоны, недвижимость) — поле «Название» не показываем.
+    let auto: Bool?
 }
 
 struct AppConfig: Codable {

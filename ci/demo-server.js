@@ -64,6 +64,7 @@ http.createServer((req, res) => {
   if (!p.startsWith('/demo/')) console.log(new Date().toISOString().slice(11, 23), req.method, req.url);
   if (p.startsWith('/demo/')) { const f = path.join(DIR, path.basename(p)); if (fs.existsSync(f)) { res.writeHead(200, { 'Content-Type': 'image/jpeg' }); return fs.createReadStream(f).pipe(res); } }
   if (p === '/api/config') return json(res, config);
+  if (p === '/api/listings/title') return json(res, { title: 'iPhone 15 Pro\u00a0· 256 ГБ' });
   if (p === '/api/me') return json(res, { user: me, unread: 2, notices: 2, fresh: { price: 1, follow: 0 } });
   if (p === '/api/listings') { const q = (u.searchParams.get('q') || '').toLowerCase(); const cat = u.searchParams.get('category'); const list = items.filter((x) => (!u.searchParams.get('user') || x.seller.id === Number(u.searchParams.get('user'))) && (!cat || x.category === cat) && (!q || q === 'а' || x.title.toLowerCase().includes(q))); return json(res, { items: list, total: list.length }); }
   let m = /^\/api\/listings\/(\d+)$/.exec(p);

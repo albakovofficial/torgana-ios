@@ -4,13 +4,12 @@ import AuthenticationServices
 // Вход и регистрация — отдельные экраны (решение 25.11, макет «A+C, вариант 2»): градиентная шапка со «стеклянными»
 // плашками категорий, поля на белой карточке поверх шапки, Apple / Яндекс ID / VK ID в один ряд, внизу — ссылка
 // на соседний экран. После регистрации (или входа с неподтверждённой почтой) — код из письма.
+// Без входа приложением не пользуются (25.11): этот экран стоит вместо вкладок, закрыть его нельзя — только войти.
 struct LoginView: View {
     enum Mode { case login, register, code }
 
     var start: Mode = .login
     @EnvironmentObject private var app: AppState
-    @EnvironmentObject private var nav: Nav
-    @Environment(\.dismiss) private var dismiss
     @State private var mode: Mode = .login
     @State private var back: Mode = .login     // куда вернуться с экрана кода
     @State private var name = ""
@@ -21,6 +20,7 @@ struct LoginView: View {
     @State private var error: String?
     @State private var oauthURL: OAuthLink?
     @State private var doc: String?
+    @State private var forgot = false
 
     var body: some View {
         Group {
@@ -34,10 +34,10 @@ struct LoginView: View {
         .sheet(item: $oauthURL) { link in
             NavigationStack { WebScreen(path: link.url.absoluteString, title: "Вход", closeOnLogin: true) }
         }
+        .sheet(isPresented: $forgot) { NavigationStack { WebScreen(path: "/forgot") } }
         .sheet(item: Binding(get: { doc.map(DocLink.init) }, set: { doc = $0?.slug })) { d in
             NavigationStack { DocView(slug: d.slug) }
         }
-        .onChange(of: app.me?.id) { _, id in if id != nil { dismiss() } }
         .onAppear { mode = start }
         .task { await AppleSignIn.shared.prefetchNonce() }
     }
@@ -72,11 +72,6 @@ struct LoginView: View {
     private var header: some View {
         VStack(spacing: 0) {
             HStack {
-                Button { dismiss() } label: {
-                    Image(systemName: "xmark").font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
-                        .frame(width: 40, height: 40).background(Circle().fill(.white.opacity(0.18)))
-                }
-                .accessibilityLabel("Закрыть")
                 Spacer()
                 Image("Logo").resizable().frame(width: 40, height: 40).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
@@ -95,7 +90,7 @@ struct LoginView: View {
             .accessibilityHidden(true)
             Text(register ? "Создайте профиль" : "С возвращением!")
                 .font(.on(30, .heavy)).foregroundStyle(.white).padding(.top, 18)
-            Text(register ? "Бесплатно — объявления, избранное и чаты" : "Войдите, чтобы писать продавцам")
+            Text(register ? "Бесплатно — объявления, избранное и чаты" : "Войдите, чтобы смотреть и размещать объявления")
                 .font(.on(15)).foregroundStyle(.white.opacity(0.85)).padding(.top, 5)
         }
         .frame(maxWidth: .infinity)
@@ -132,7 +127,7 @@ struct LoginView: View {
             } else {
                 HStack {
                     Spacer()
-                    Button("Забыли пароль?") { nav.push(.web("/forgot")); dismiss() }
+                    Button("Забыли пароль?") { forgot = true }
                         .font(.on(14.5, .semibold)).foregroundStyle(T.accent)
                 }
             }

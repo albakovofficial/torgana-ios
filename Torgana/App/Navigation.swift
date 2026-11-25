@@ -94,6 +94,9 @@ final class Nav: ObservableObject {
 
     func push(_ route: Route) { paths[tab, default: []].append(route) }
 
+    /// С чистого листа: все вкладки — к началу, открыта главная (после выхода из профиля).
+    func reset() { paths = [:]; tab = .home }
+
     /// «Хлебные крошки» экрана: вкладка и экраны под ним; нажатие — вернуться на тот уровень.
     func crumbs(for route: Route?) -> [(title: String, go: () -> Void)] {
         let t = tab
@@ -145,6 +148,25 @@ struct MainView: View {
     @ObservedObject private var push = PushManager.shared
 
     var body: some View {
+        // Без входа Торганой не пользуются (решение 25.11): нет профиля — только вход и регистрация.
+        if let mode = loginMode {
+            LoginView(start: mode)
+        } else if app.me == nil {
+            Splash()
+        } else {
+            tabs
+        }
+    }
+
+    /// Что показать вместо вкладок: вход, если профиля нет (сервер ответил или сессии нет вовсе).
+    private var loginMode: LoginView.Mode? {
+        #if DEBUG
+        if let p = app.preview { return p }
+        #endif
+        return app.me == nil && (app.meKnown || !CookieSync.shared.hasSession) ? .login : nil
+    }
+
+    private var tabs: some View {
         ZStack(alignment: .bottom) {
             ZStack {
                 stack(.home) { HomeView() }
@@ -160,9 +182,6 @@ struct MainView: View {
         }
         .animation(.easeOut(duration: 0.2), value: nav.barVisible)
         .modifier(ToastHost())
-        .fullScreenCover(isPresented: $app.needLogin, onDismiss: { app.loginRegister = false }) {
-            NavigationStack { LoginView(start: app.loginRegister ? .register : .login) }
-        }
         // Один раз после входа, как на сайте; потом — системный запрос iPhone.
         .alert("Включить уведомления?", isPresented: $push.ask) {
             Button("Включить") {
@@ -184,6 +203,27 @@ struct MainView: View {
         .tint(T.accent)
         .opacity(nav.tab == tab ? 1 : 0)
         .allowsHitTesting(nav.tab == tab)
+    }
+}
+
+/// Заставка, пока сервер отвечает, кто вошёл (сессия сохранена — вход не показываем зря).
+private struct Splash: View {
+    @EnvironmentObject private var app: AppState
+    var body: some View {
+        VStack(spacing: 22) {
+            Image("Logo").resizable().frame(width: 84, height: 84).clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+                .shadow(color: .black.opacity(0.18), radius: 20, y: 10)
+            if app.offline {
+                Text("Нет связи с Торганой").font(.on(17, .semibold)).foregroundStyle(.white)
+                Button("Повторить") { Task { await app.refreshMe() } }
+                    .font(.on(16, .semibold)).foregroundStyle(.white)
+                    .padding(.horizontal, 26).frame(height: 46).background(Capsule().fill(.white.opacity(0.2)))
+            } else {
+                ProgressView().tint(.white)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(LinearGradient(colors: [Color(hex: 0x2E6FCC), Color(hex: 0x5B5FD6), Color(hex: 0x8A5CF0)], startPoint: .topLeading, endPoint: .bottomTrailing).ignoresSafeArea())
     }
 }
 

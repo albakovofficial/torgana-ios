@@ -18,14 +18,10 @@ struct MessagesView: View {
             LazyVStack(alignment: .leading, spacing: 0) {
                 Text("Сообщения").font(.on(30, .heavy)).foregroundStyle(T.text)
                     .padding(.horizontal, 20).padding(.top, 14).padding(.bottom, 12)
-                if app.me == nil {
-                    EmptyState(title: "Переписка с продавцами", text: "Войдите, чтобы писать продавцам и отвечать покупателям.", button: "Войти") { app.needLogin = true }
-                } else {
-                    search
-                    filters
-                    NavigationLink(value: Route.support) { supportRow }.buttonStyle(.plain)
-                    list
-                }
+                search
+                filters
+                NavigationLink(value: Route.support) { supportRow }.buttonStyle(.plain)
+                list
             }
             TabBarSpace()
         }

@@ -49,8 +49,6 @@ struct ProfileView: View {
                     .padding(.top, 22)
                     Text("Торгана \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "") (\(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""))")
                         .font(.on(12)).foregroundStyle(T.faint).frame(maxWidth: .infinity).padding(.top, 12)
-                } else {
-                    guest
                 }
             }
             .padding(.horizontal, 20)
@@ -68,23 +66,6 @@ struct ProfileView: View {
         guard let me = app.me else { return }
         await store.load()
         if me.isAdmin == true { admin = try? await API.shared.get("/api/admin/stats") }
-    }
-
-    private var guest: some View {
-        VStack(spacing: 14) {
-            Image("Logo").resizable().frame(width: 84, height: 84).clipShape(Circle()).padding(.top, 36)
-            Text("Торгана. Сторгуемся!").font(.on(26, .heavy)).foregroundStyle(T.text)
-            Text("Войдите, чтобы размещать объявления, переписываться с продавцами и сохранять избранное.")
-                .font(.on(16)).foregroundStyle(T.muted).multilineTextAlignment(.center)
-            Button("Войти") { app.needLogin = true }.buttonStyle(TButton(kind: .dark)).padding(.top, 6)
-            Button("Создать профиль") { app.loginRegister = true; app.needLogin = true }.buttonStyle(TButton(kind: .soft))
-            SettingsGroup {
-                SettingsRow(icon: "headphones", color: Tint.green, title: "Поддержка") { nav.push(.support) }
-                SettingsRow(icon: "doc.text", color: Tint.gray, title: "Правила и документы", last: true) { nav.push(.doc("rules")) }
-            }
-            .padding(.top, 10)
-        }
-        .frame(maxWidth: .infinity)
     }
 
     private var active: Int { store.items.filter { $0.status == "active" }.count }

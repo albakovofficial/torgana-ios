@@ -176,13 +176,11 @@ struct ListingView: View {
                     .buttonStyle(TButton(kind: .accent, height: 58))
                     .disabled(writing)
                     if l.bargain == true {
-                        Button { if app.me == nil { app.needLogin = true } else { offer = true } } label: { Label("Предложить цену", systemImage: "tag") }
+                        Button { offer = true } label: { Label("Предложить цену", systemImage: "tag") }
                             .buttonStyle(TButton(kind: .soft, height: 58))
                     }
-                    if app.me != nil {
-                        Button { report = true } label: { Label("Пожаловаться", systemImage: "flag") }
-                            .buttonStyle(TButton(kind: .line, height: 48))
-                    }
+                    Button { report = true } label: { Label("Пожаловаться", systemImage: "flag") }
+                        .buttonStyle(TButton(kind: .line, height: 48))
                 }
             }
             .padding(.top, 22)

@@ -63,13 +63,22 @@ struct ListingView: View {
     }
 
     private func content(_ d: ListingResponse) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                BackButton().padding(.top, 10)
-                blocks(d).padding(.top, 14)
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    BackButton().padding(.top, 10)
+                    blocks(d).padding(.top, 14)
+                }
+                .padding(.horizontal, 20)
+                TabBarSpace()
             }
-            .padding(.horizontal, 20)
-            TabBarSpace()
+            #if DEBUG
+            .task {   // снимок «/l/5#bottom» — блок продавца
+                guard UserDefaults.standard.bool(forKey: "bottom") else { return }
+                try? await Task.sleep(nanoseconds: 800_000_000)
+                proxy.scrollTo("seller", anchor: .center)
+            }
+            #endif
         }
     }
 
@@ -85,7 +94,7 @@ struct ListingView: View {
                     .padding(.top, 36)
             }
             conditions(l).padding(.top, 36)
-            if let s = d.seller { seller(s, own: l.isOwner == true).padding(.top, 36) }
+            if let s = d.seller { seller(s, own: l.isOwner == true).padding(.top, 36).id("seller") }
             if draft == nil {
                 fraud.padding(.top, 16)
                 if let similar = d.similar, !similar.isEmpty {

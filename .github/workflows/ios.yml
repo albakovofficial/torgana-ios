@@ -79,17 +79,18 @@ jobs:
           n=0
           for mode in light dark; do
             xcrun simctl ui "$UDID" appearance $mode
-            for r in "/" "/l/5" "/search?q=%D0%B0" "/favorites" "/messages" "/messages/1" "/messages/1#attach" "/profile" "/profile/settings#sf" "/profile/settings#sn" "/profile/settings#s-acc" "/profile/listings" "/new" "/new#step1" "/new#step2" "/u/2" "/u/3" "/page/rules" "/login" "/register" "/ask"; do
+            for r in "/" "/l/5" "/l/5#bottom" "/search?q=%D0%B0" "/favorites" "/messages" "/messages/1" "/messages/1#attach" "/profile" "/profile/settings#sf" "/profile/settings#sn" "/profile/settings#s-acc" "/profile/listings" "/new" "/new#step1" "/new#step2" "/u/2" "/u/3" "/page/rules" "/login" "/register" "/ask"; do
               n=$((n+1))
               name=$(printf "%s-%02d-%s" "$mode" "$n" "$(echo "$r" | tr -c 'a-z0-9' '-' | sed 's/^-*//;s/-*$//')")
               echo "$(date -u +%H:%M:%S.000) === $mode $r" >> demo.log
               f="shots/${name:-home}.png"
               # Медленный симулятор иногда показывает пустой экран (снимок ~76 КБ) — ждём и снимаем ещё, при надобности перезапускаем.
               for try in 1 2 3; do
-                # «…#attach» — тот же экран с открытыми плитками «+» (-attach YES); «/new#stepN» — шаг подачи с примером (-step N)
+                # «…#attach» — тот же экран с открытыми плитками «+» (-attach YES); «#bottom» — объявление у блока продавца; «/new#stepN» — шаг подачи с примером (-step N)
                 route="$r"; extra=""
                 case "$r" in
                   *"#attach") route="${r%#attach}"; extra="-attach YES" ;;
+                  *"#bottom") route="${r%#bottom}"; extra="-bottom YES" ;;
                   "/new#step"*) route="/new"; extra="-step ${r##*#step}" ;;
                 esac
                 xcrun simctl launch --terminate-running-process "$UDID" ru.torgana.app -base http://127.0.0.1:8787 -route "$route" $extra > /dev/null

@@ -130,7 +130,7 @@ struct UserView: View {
 
     /// Переписка всегда об объявлении: одно — сразу в чат, несколько — выбрать (как writePicker сайта).
     private func write() {
-        guard app.me != nil else { app.needLogin = true; return }
+        guard app.me != nil else { app.requireLogin(.init(title: "Войдите, чтобы написать", text: "Продавец ответит вам в сообщениях")); return }
         if items.isEmpty { app.show("Сейчас у продавца нет объявлений", bad: true) }
         else if items.count == 1 { Task { await app.openChat(listingId: items[0].id) } }
         else { pick = true }

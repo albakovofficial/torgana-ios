@@ -40,6 +40,16 @@ enum Route: Hashable {
 enum Tab: Int, CaseIterable {
     case home, favorites, post, messages, profile
 
+    /// Шторка входа, когда гость открывает вкладку.
+    var loginAsk: AppState.LoginAsk {
+        switch self {
+        case .favorites: return .init(title: "Войдите, чтобы сохранять", text: "Отмечайте объявления сердечком — сообщим, когда подешевеют")
+        case .post: return .init(title: "Войдите, чтобы продать", text: "Бесплатно и без лимитов — через пару минут объявление уйдёт на проверку")
+        case .messages: return .init(title: "Войдите, чтобы переписываться", text: "Спрашивайте, торгуйтесь и договаривайтесь о встрече прямо здесь")
+        default: return .init(title: "Войдите в Торгану", text: "Объявления, переписка и избранное — в одном профиле")
+        }
+    }
+
     var title: String {
         switch self {
         case .home: return "Главная"
@@ -131,6 +141,11 @@ final class Nav: ObservableObject {
     }
 
     func reselect(_ t: Tab) {
+        // Гостю вне главной — шторка входа; после входа откроется выбранная вкладка.
+        if t != .home && AppState.shared.me == nil {
+            AppState.shared.requireLogin(t.loginAsk) { Nav.shared.tab = t }
+            return
+        }
         if tab == t {
             paths[t] = []
         } else { tab = t }
@@ -160,8 +175,12 @@ struct MainView: View {
         }
         .animation(.easeOut(duration: 0.2), value: nav.barVisible)
         .modifier(ToastHost())
-        .fullScreenCover(isPresented: $app.needLogin, onDismiss: { app.loginRegister = false }) {
-            NavigationStack { LoginView(start: app.loginRegister ? .register : .login) }
+        .sheet(item: $app.ask, onDismiss: { app.loginClosed() }) { LoginSheet(ask: $0) }
+        .fullScreenCover(item: Binding(get: { app.loginFull.map(LoginFull.init) }, set: { app.loginFull = $0?.mode }),
+                         onDismiss: { app.loginClosed() }) { NavigationStack { LoginView(start: $0.mode) } }
+        // Ссылка или push открыли раздел, а профиля нет — на главную и шторка входа.
+        .onChange(of: nav.tab) { _, t in
+            if t != .home && app.me == nil { nav.tab = .home; app.requireLogin(t.loginAsk) { Nav.shared.tab = t } }
         }
         // Один раз после входа, как на сайте; потом — системный запрос iPhone.
         .alert("Включить уведомления?", isPresented: $push.ask) {
@@ -186,6 +205,8 @@ struct MainView: View {
         .allowsHitTesting(nav.tab == tab)
     }
 }
+
+private struct LoginFull: Identifiable { let mode: LoginView.Mode; var id: String { "\(mode)" } }
 
 struct RouteView: View {
     let route: Route

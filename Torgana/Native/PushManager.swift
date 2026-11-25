@@ -143,7 +143,7 @@ final class PushManager: NSObject, ObservableObject {
         #endif
         guard userId != nil, !UserDefaults.standard.bool(forKey: "push.asked"), await permission() == .notAsked else { return }
         try? await Task.sleep(nanoseconds: 1_200_000_000)
-        guard userId != nil, !AppState.shared.needLogin else { return }   // окно входа ещё открыто — спросим при следующем запуске
+        guard userId != nil, AppState.shared.ask == nil, AppState.shared.loginFull == nil else { return }   // окно входа ещё открыто — спросим при следующем запуске
         UserDefaults.standard.set(true, forKey: "push.asked")
         ask = true
     }

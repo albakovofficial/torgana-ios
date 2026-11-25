@@ -176,7 +176,7 @@ struct ListingView: View {
                     .buttonStyle(TButton(kind: .accent, height: 58))
                     .disabled(writing)
                     if l.bargain == true {
-                        Button { if app.me == nil { app.needLogin = true } else { offer = true } } label: { Label("Предложить цену", systemImage: "tag") }
+                        Button { if app.me == nil { app.requireLogin(.init(title: "Войдите, чтобы предложить цену", text: "Продавец увидит ваше предложение в сообщениях")) } else { offer = true } } label: { Label("Предложить цену", systemImage: "tag") }
                             .buttonStyle(TButton(kind: .soft, height: 58))
                     }
                     if app.me != nil {

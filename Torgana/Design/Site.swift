@@ -118,7 +118,7 @@ struct SiteMenu: View {
                     }
                     .buttonStyle(.plain)
                 } else {
-                    Button("Войти или зарегистрироваться") { dismiss(); app.needLogin = true }.buttonStyle(TButton(kind: .dark))
+                    Button("Войти или зарегистрироваться") { dismiss(); app.requireLogin(Tab.profile.loginAsk) }.buttonStyle(TButton(kind: .dark))
                 }
                 SettingsGroup {
                     SettingsRow(icon: "headphones", color: Tint.green, title: "Поддержка", sub: "Отвечают люди, а не боты") { go("/messages/support") }

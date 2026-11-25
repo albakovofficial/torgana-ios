@@ -4,6 +4,8 @@ import AuthenticationServices
 // Вход и регистрация — отдельные экраны (решение 25.11, макет «A+C, вариант 2»): градиентная шапка со «стеклянными»
 // плашками категорий, поля на белой карточке поверх шапки, Apple / Яндекс ID / VK ID в один ряд, внизу — ссылка
 // на соседний экран. После регистрации (или входа с неподтверждённой почтой) — код из письма.
+// Гостю вход предлагается шторкой (LoginSheet ниже, решение 25.11): во вкладках «Избранное», «+», «Сообщения»,
+// «Профиль» и по кнопкам «Написать», «♡», «Подписаться»; «Войти по почте» в шторке открывает этот экран.
 struct LoginView: View {
     enum Mode { case login, register, code }
 
@@ -19,21 +21,17 @@ struct LoginView: View {
     @State private var consent = false
     @State private var busy = false
     @State private var error: String?
-    @State private var oauthURL: OAuthLink?
     @State private var doc: String?
 
     var body: some View {
         Group {
             if mode == .code {
-                CodeStep(email: email, back: { withAnimation { mode = back } }, done: done)
+                CodeStep(email: email, back: { withAnimation { mode = back } }, done: { await AuthButtons.signedIn() })
             } else {
                 form
             }
         }
         .toolbar(.hidden, for: .navigationBar)
-        .sheet(item: $oauthURL) { link in
-            NavigationStack { WebScreen(path: link.url.absoluteString, title: "Вход", closeOnLogin: true) }
-        }
         .sheet(item: Binding(get: { doc.map(DocLink.init) }, set: { doc = $0?.slug })) { d in
             NavigationStack { DocView(slug: d.slug) }
         }
@@ -66,9 +64,6 @@ struct LoginView: View {
         .background(Color.dyn(0xF5F7FC, 0x0F121B).ignoresSafeArea())
     }
 
-    private static let chips: [(String, String)] = [("🚗", "Авто"), ("🏠", "Квартиры"), ("📱", "Электроника"), ("👟", "Одежда"),
-                                                     ("🛋", "Для дома"), ("🔧", "Услуги"), ("🐾", "Животные")]
-
     private var header: some View {
         VStack(spacing: 0) {
             HStack {
@@ -81,18 +76,7 @@ struct LoginView: View {
                 Image("Logo").resizable().frame(width: 40, height: 40).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
             .padding(.horizontal, 22).padding(.top, 8)
-            FlowLayout(spacing: 8, center: true) {
-                ForEach(Array(Self.chips.enumerated()), id: \.offset) { i, c in
-                    Text("\(c.0) \(c.1)")
-                        .font(.on(13.5, .semibold)).foregroundStyle(.white)
-                        .padding(.horizontal, 13).frame(height: 34)
-                        .background(Capsule().fill(.white.opacity(0.16)))
-                        .overlay(Capsule().strokeBorder(.white.opacity(0.28), lineWidth: 1))
-                        .rotationEffect(.degrees([-5, 3, -2, 4, -3, 2, -4][i]))
-                }
-            }
-            .padding(.horizontal, 10).padding(.top, 14)
-            .accessibilityHidden(true)
+            CategoryChips().padding(.horizontal, 10).padding(.top, 14)
             Text(register ? "Создайте профиль" : "С возвращением!")
                 .font(.on(30, .heavy)).foregroundStyle(.white).padding(.top, 18)
             Text(register ? "Бесплатно — объявления, избранное и чаты" : "Войдите, чтобы писать продавцам")
@@ -101,7 +85,7 @@ struct LoginView: View {
         .frame(maxWidth: .infinity)
         .padding(.bottom, 92)
         .background {
-            LinearGradient(colors: [Color(hex: 0x2E6FCC), Color(hex: 0x5B5FD6), Color(hex: 0x8A5CF0)], startPoint: .topLeading, endPoint: .bottomTrailing)
+            AuthGradient()
                 .overlay(alignment: .topTrailing) { Circle().fill(.white.opacity(0.08)).frame(width: 260, height: 260).offset(x: 80, y: -60) }
                 .clipped()
                 .padding(.top, -600)          // при оттягивании вниз сверху тоже градиент
@@ -149,68 +133,14 @@ struct LoginView: View {
                 Rectangle().fill(T.line).frame(height: 1)
             }
             .padding(.vertical, 4)
-            socials
-            Text(fine).font(.on(12)).foregroundStyle(T.faint).frame(maxWidth: .infinity).multilineTextAlignment(.center)
+            AuthButtons()
         }
         .padding(18)
         .background(RoundedRectangle(cornerRadius: 28, style: .continuous).fill(T.card))
         .shadow(color: Color(hex: 0x161A2B).opacity(0.12), radius: 25, y: 14)
     }
 
-    private var providers: [String] {
-        ["yandex", "vk"].filter { app.config?.oauth?[$0] == true }
-    }
-
-    private var fine: String {
-        let names = ["Apple"] + providers.map { $0 == "vk" ? "VK" : "Яндекс" }
-        let who = names.count == 1 ? names[0] : names.dropLast().joined(separator: ", ") + " или " + names.last!
-        return "Входя через \(who), вы принимаете правила Торганы и обработку данных"
-    }
-
-    /// Apple, Яндекс ID, VK ID — в один ряд значками; если Apple один — широкая кнопка с подписью.
-    private var socials: some View {
-        HStack(spacing: 10) {
-            Button { Task { await apple() } } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "apple.logo").font(.system(size: 19, weight: .medium))
-                    if providers.isEmpty { Text("Продолжить с Apple").font(.on(16.5, .semibold)) }
-                }
-                .frame(maxWidth: .infinity).frame(height: 50).foregroundStyle(.white)
-                .background(Capsule().fill(Color.black))
-                .overlay(Capsule().strokeBorder(.white.opacity(0.18), lineWidth: 1))
-            }
-            .accessibilityLabel("Войти с Apple")
-            if providers.contains("yandex") {
-                oauth("yandex", label: "Войти с Яндекс ID", fill: Color.dyn(0x161A2B, 0x2C3248)) {
-                    Text("Я").font(.system(size: 15, weight: .heavy)).foregroundStyle(.white)
-                        .frame(width: 24, height: 24).background(Circle().fill(Color(hex: 0xFC3F1D)))
-                }
-            }
-            if providers.contains("vk") {
-                oauth("vk", label: "Войти с VK ID", fill: Color(hex: 0x0077FF)) {
-                    Text("VK").font(.system(size: 11, weight: .black)).foregroundStyle(Color(hex: 0x0077FF))
-                        .frame(width: 24, height: 24).background(RoundedRectangle(cornerRadius: 7).fill(.white))
-                }
-            }
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func oauth<L: View>(_ provider: String, label: String, fill: Color, @ViewBuilder icon: () -> L) -> some View {
-        Button {
-            Task {
-                do {
-                    let r: JSONValue = try await API.shared.post("/api/auth/oauth/\(provider)/start", ["next": "/profile"])
-                    if let s = r["url"]?.string, let u = URL(string: s) { oauthURL = OAuthLink(url: u) }
-                } catch { self.error = (error as? APIError)?.message }
-            }
-        } label: {
-            icon().frame(maxWidth: .infinity).frame(height: 50).background(Capsule().fill(fill))
-        }
-        .accessibilityLabel(label)
-    }
-
-    // MARK: - Запросы
+    // MARK: - Запросы    // MARK: - Запросы
 
     private struct AuthResult: Decodable { let needCode: Bool?; let email: String? }
     private struct RegisterBody: Encodable { let name: String; let email: String; let password: String; let consent: Bool; let src: String }
@@ -234,32 +164,10 @@ struct LoginView: View {
                 withAnimation { mode = .code }
                 return
             }
-            await done()
+            await AuthButtons.signedIn()
         } catch { self.error = (error as? APIError)?.message ?? "Нет связи с Торганой — попробуйте ещё раз" }
     }
 
-    private func apple() async {
-        error = nil
-        switch await AppleSignIn.shared.authorize() {
-        case .failure(let e):
-            if (e as? ASAuthorizationError)?.code != .canceled { error = "Apple не подтвердил вход — попробуйте ещё раз" }
-        case .success(let auth):
-            guard let p = AppleSignIn.shared.payload(auth) else { error = "Apple не прислал данные для входа"; return }
-            do {
-                var body = p
-                body["consent"] = .bool(true)
-                _ = try await API.shared.post("/api/auth/apple", body, as: JSONValue.self)
-                await done()
-            } catch { self.error = (error as? APIError)?.message }
-        }
-    }
-
-    /// Вошли: сессия — страницам сайта и в Связку ключей, профиль — родным экранам.
-    private func done() async {
-        Haptics.play("success")
-        await withCheckedContinuation { c in CookieSync.shared.adoptNative { c.resume() } }
-        await app.refreshMe()
-    }
 }
 
 private struct DocLink: Identifiable { let slug: String; var id: String { slug } }
@@ -439,4 +347,172 @@ private struct CodeStep: View {
 struct OAuthLink: Identifiable {
     let url: URL
     var id: String { url.absoluteString }
+}
+
+// MARK: - Общее для экрана входа и шторки
+
+/// Фирменный переход цвета шапки входа.
+struct AuthGradient: View {
+    var body: some View {
+        LinearGradient(colors: [Color(hex: 0x2E6FCC), Color(hex: 0x5B5FD6), Color(hex: 0x8A5CF0)], startPoint: .topLeading, endPoint: .bottomTrailing)
+    }
+}
+
+/// «Стеклянные» плашки категорий на градиенте.
+struct CategoryChips: View {
+    var count = 7
+    var size: CGFloat = 13.5
+    private static let all: [(String, String)] = [("🚗", "Авто"), ("🏠", "Квартиры"), ("📱", "Электроника"), ("👟", "Одежда"),
+                                                   ("🛋", "Для дома"), ("🔧", "Услуги"), ("🐾", "Животные")]
+    var body: some View {
+        FlowLayout(spacing: 8, center: true) {
+            ForEach(Array(Self.all.prefix(count).enumerated()), id: \.offset) { i, c in
+                Text("\(c.0) \(c.1)")
+                    .font(.on(size, .semibold)).foregroundStyle(.white)
+                    .padding(.horizontal, size - 0.5).frame(height: size * 2.5)
+                    .background(Capsule().fill(.white.opacity(0.16)))
+                    .overlay(Capsule().strokeBorder(.white.opacity(0.28), lineWidth: 1))
+                    .rotationEffect(.degrees([-5, 3, -2, 4, -3, 2, -4][i]))
+            }
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+/// Вход через Apple, Яндекс ID, VK ID: один ряд значками; если Apple один — широкая кнопка с подписью. Под ними — согласие.
+struct AuthButtons: View {
+    @EnvironmentObject private var app: AppState
+    @State private var oauthURL: OAuthLink?
+
+    private var providers: [String] { ["yandex", "vk"].filter { app.config?.oauth?[$0] == true } }
+
+    private var fine: String {
+        let names = ["Apple"] + providers.map { $0 == "vk" ? "VK" : "Яндекс" }
+        let who = names.count == 1 ? names[0] : names.dropLast().joined(separator: ", ") + " или " + names.last!
+        return "Входя через \(who), вы принимаете правила Торганы и обработку данных"
+    }
+
+    var body: some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 10) {
+                Button { Task { await apple() } } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "apple.logo").font(.system(size: 19, weight: .medium))
+                        if providers.isEmpty { Text("Продолжить с Apple").font(.on(16.5, .semibold)) }
+                    }
+                    .frame(maxWidth: .infinity).frame(height: 50).foregroundStyle(.white)
+                    .background(Capsule().fill(Color.black))
+                    .overlay(Capsule().strokeBorder(.white.opacity(0.18), lineWidth: 1))
+                }
+                .accessibilityLabel("Войти с Apple")
+                if providers.contains("yandex") {
+                    oauth("yandex", label: "Войти с Яндекс ID", fill: Color.dyn(0x161A2B, 0x2C3248)) {
+                        Text("Я").font(.system(size: 15, weight: .heavy)).foregroundStyle(.white)
+                            .frame(width: 24, height: 24).background(Circle().fill(Color(hex: 0xFC3F1D)))
+                    }
+                }
+                if providers.contains("vk") {
+                    oauth("vk", label: "Войти с VK ID", fill: Color(hex: 0x0077FF)) {
+                        Text("VK").font(.system(size: 11, weight: .black)).foregroundStyle(Color(hex: 0x0077FF))
+                            .frame(width: 24, height: 24).background(RoundedRectangle(cornerRadius: 7).fill(.white))
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+            Text(fine).font(.on(12)).foregroundStyle(T.faint).frame(maxWidth: .infinity).multilineTextAlignment(.center)
+        }
+        .sheet(item: $oauthURL) { link in
+            NavigationStack { WebScreen(path: link.url.absoluteString, title: "Вход", closeOnLogin: true) }
+        }
+    }
+
+    private func oauth<L: View>(_ provider: String, label: String, fill: Color, @ViewBuilder icon: () -> L) -> some View {
+        Button {
+            Task {
+                do {
+                    let r: JSONValue = try await API.shared.post("/api/auth/oauth/\(provider)/start", ["next": "/profile"])
+                    if let s = r["url"]?.string, let u = URL(string: s) { oauthURL = OAuthLink(url: u) }
+                } catch { app.show((error as? APIError)?.message ?? "Не получилось", bad: true) }
+            }
+        } label: {
+            icon().frame(maxWidth: .infinity).frame(height: 50).background(Capsule().fill(fill))
+        }
+        .accessibilityLabel(label)
+    }
+
+    private func apple() async {
+        switch await AppleSignIn.shared.authorize() {
+        case .failure(let e):
+            if (e as? ASAuthorizationError)?.code != .canceled { app.show("Apple не подтвердил вход — попробуйте ещё раз", bad: true) }
+        case .success(let auth):
+            guard let p = AppleSignIn.shared.payload(auth) else { app.show("Apple не прислал данные для входа", bad: true); return }
+            do {
+                var body = p
+                body["consent"] = .bool(true)
+                _ = try await API.shared.post("/api/auth/apple", body, as: JSONValue.self)
+                await Self.signedIn()
+            } catch { app.show((error as? APIError)?.message ?? "Не получилось войти", bad: true) }
+        }
+    }
+
+    /// Вошли: сессия — страницам сайта и в Связку ключей, профиль — родным экранам.
+    @MainActor
+    static func signedIn() async {
+        Haptics.play("success")
+        await withCheckedContinuation { c in CookieSync.shared.adoptNative { c.resume() } }
+        await AppState.shared.refreshMe()
+    }
+}
+
+// MARK: - Шторка входа для гостя
+
+struct LoginSheet: View {
+    let ask: AppState.LoginAsk
+    @EnvironmentObject private var app: AppState
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 0) {
+            VStack(spacing: 0) {
+                CategoryChips(count: 4, size: 12.5).padding(.horizontal, 14).padding(.top, 26)
+                Text(ask.title).font(.on(23, .heavy)).foregroundStyle(.white).multilineTextAlignment(.center).padding(.top, 16)
+                Text(ask.text).font(.on(14.5)).foregroundStyle(.white.opacity(0.88)).multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true).padding(.top, 5).padding(.horizontal, 22)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.bottom, 22)
+            .background {
+                AuthGradient().overlay(alignment: .topTrailing) {
+                    Circle().fill(.white.opacity(0.08)).frame(width: 220, height: 220).offset(x: 70, y: -70)
+                }
+                .clipped()
+            }
+            VStack(spacing: 12) {
+                AuthButtons()
+                Button { open(.login) } label: { Label("Войти по почте", systemImage: "envelope") }
+                    .buttonStyle(TButton(kind: .accent, height: 52))
+                Button { open(.register) } label: {
+                    (Text("Нет профиля? ").foregroundStyle(T.muted) + Text("Зарегистрироваться").foregroundStyle(T.accent).fontWeight(.bold))
+                        .font(.on(15))
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 2)
+            }
+            .padding(18)
+            Spacer(minLength: 0)
+        }
+        .background(T.card)
+        .presentationDetents([.height(500)])
+        .presentationDragIndicator(.visible)
+        .presentationCornerRadius(34)
+        .onChange(of: app.me?.id) { _, id in if id != nil { dismiss() } }
+        .task { await AppleSignIn.shared.prefetchNonce() }
+    }
+
+    /// Почта и пароль — на полном экране входа; шторка закрывается, начатое действие ждёт входа.
+    private func open(_ mode: LoginView.Mode) {
+        app.keepPending = true
+        dismiss()
+        Task { try? await Task.sleep(nanoseconds: 350_000_000); app.loginFull = mode }
+    }
 }

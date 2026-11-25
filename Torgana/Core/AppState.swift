@@ -15,8 +15,14 @@ final class AppState: ObservableObject {
     }
     /// Избранное, изменённое на этом экране: id → в избранном ли. Карточки в других списках сразу видят изменение.
     @Published var favs: [Int: Bool] = [:]
-    /// Окно входа открыть сразу на регистрации («Создать профиль»).
-    var loginRegister = false
+    /// Шторка входа для гостя (нажал «Написать», «♡», вкладку «Профиль»…) и полный экран входа или регистрации.
+    struct LoginAsk: Identifiable { let id = UUID(); let title: String; let text: String }
+    @Published var ask: LoginAsk?
+    @Published var loginFull: LoginView.Mode?
+    /// Шторка закрывается, чтобы открыть полный экран входа, — начатое действие не забываем.
+    var keepPending = false
+    /// Что сделать сразу после входа (открыть вкладку, написать продавцу, добавить в избранное).
+    private var pending: (@MainActor () async -> Void)?
     @Published var toast: Toast?
 
     struct Toast: Equatable { let text: String; let bad: Bool; let id = UUID() }
@@ -32,9 +38,12 @@ final class AppState: ObservableObject {
         #if DEBUG
         // Снимки экранов: запуск с -route /l/5 сразу открывает нужный экран (данные он грузит сам).
         if let r = UserDefaults.standard.string(forKey: "route"), !r.isEmpty {
-            if r == "/login" || r == "/register" {
+            if r == "/login" || r == "/register" || r == "/ask" {
                 // окно входа — когда профиль уже загружен (иначе его загрузка закроет окно)
-                Task { try? await Task.sleep(nanoseconds: 3_000_000_000); loginRegister = r == "/register"; needLogin = true }
+                Task {
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    if r == "/ask" { ask = Tab.profile.loginAsk } else { loginFull = r == "/login" ? .login : .register }
+                }
             } else { Nav.shared.open(path: r) }
         }
         #endif
@@ -65,6 +74,8 @@ final class AppState: ObservableObject {
         }
         let changed = me?.id != r.user?.id
         me = r.user
+        if changed && r.user == nil { Nav.shared.reset() }   // вышли — с главной, гостем
+        if changed && r.user != nil, let then = pending { pending = nil; Task { await then() } }
         if changed { Task { await PushManager.shared.sync(); await PushManager.shared.askOnce() } }
         unread = r.unread ?? 0
         notices = r.notices ?? 0
@@ -79,9 +90,26 @@ final class AppState: ObservableObject {
 
     func isFav(_ id: Int, _ fallback: Bool?) -> Bool { favs[id] ?? fallback ?? false }
 
-    /// Добавить в избранное или убрать. Гостю — предложение войти.
+    /// Гостю — шторка входа; после входа выполнится then.
+    func requireLogin(_ ask: LoginAsk, then: (@MainActor () async -> Void)? = nil) {
+        pending = then
+        self.ask = ask
+    }
+
+    /// Шторку или экран входа закрыли, не войдя, — начатое действие отменяется.
+    func loginClosed() {
+        if me == nil && !keepPending { pending = nil }
+        keepPending = false
+    }
+
+    /// Добавить в избранное или убрать. Гостю — шторка входа, после входа — добавить.
     func toggleFav(_ id: Int, current: Bool) async -> Bool {
-        guard me != nil else { needLogin = true; return current }
+        guard me != nil else {
+            requireLogin(LoginAsk(title: "Войдите, чтобы сохранить", text: "Отмечайте объявления сердечком — сообщим, когда подешевеют")) { [weak self] in
+                _ = await self?.toggleFav(id, current: current)
+            }
+            return current
+        }
         favs[id] = !current
         Haptics.play("light")
         do {
@@ -98,7 +126,12 @@ final class AppState: ObservableObject {
     /// Переписка о объявлении (создаётся или находится) и, если задано, предложение цены; затем — открыть чат.
     /// Гостю — вход. Ошибка — всплывающим сообщением.
     func openChat(listingId: Int, offer: Int? = nil) async {
-        guard me != nil else { needLogin = true; return }
+        guard me != nil else {
+            requireLogin(LoginAsk(title: "Войдите, чтобы написать", text: "Продавец ответит вам в сообщениях")) { [weak self] in
+                await self?.openChat(listingId: listingId, offer: offer)
+            }
+            return
+        }
         do {
             let r: IdResult = try await API.shared.post("/api/conversations", ["listingId": listingId])
             if let offer {
@@ -113,7 +146,12 @@ final class AppState: ObservableObject {
 
     /// Подписаться на продавца или отписаться. nil — не получилось (сообщение уже показано).
     func follow(_ userId: Int, _ on: Bool) async -> FollowResult? {
-        guard me != nil else { needLogin = true; return nil }
+        guard me != nil else {
+            requireLogin(LoginAsk(title: "Войдите, чтобы подписаться", text: "Новые объявления продавца придут в уведомления")) { [weak self] in
+                _ = await self?.follow(userId, on)
+            }
+            return nil
+        }
         do {
             let r: FollowResult = try await API.shared.post("/api/users/\(userId)/follow", ["follow": on])
             Haptics.play("light")
@@ -134,7 +172,6 @@ final class AppState: ObservableObject {
     }
 
     /// Нужно войти — открывается экран входа.
-    @Published var needLogin = false
 }
 
 enum Badge {

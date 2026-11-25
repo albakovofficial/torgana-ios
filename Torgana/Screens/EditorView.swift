@@ -46,7 +46,15 @@ struct EditorView: View {
 
     var body: some View {
         Group {
-            if let id = done {
+            if app.me == nil {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        PageTitle(text: "Новое объявление", size: 30).padding(.top, 16)
+                        EmptyState(title: "Подайте объявление", text: "Бесплатно и без лимитов. Войдите — и через пару минут объявление уйдёт на проверку.", button: "Войти") { app.needLogin = true }
+                    }
+                    .padding(.horizontal, 20)
+                }
+            } else if let id = done {
                 success(id)
             } else {
                 wizard

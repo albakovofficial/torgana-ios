@@ -13,7 +13,9 @@ struct FavoritesView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 Text("Избранное").font(.on(22, .bold)).foregroundStyle(T.text).padding(.top, 24)
-                if loading && items.isEmpty {
+                if app.me == nil {
+                    EmptyState(title: "Сохраняйте понравившееся", text: "Войдите, чтобы отмечать объявления сердечком и узнавать, когда они дешевеют.", button: "Войти") { app.needLogin = true }
+                } else if loading && items.isEmpty {
                     LoadingView()
                 } else if let error, items.isEmpty {
                     EmptyState(title: "Не загрузилось", text: error, button: "Повторить") { Task { await load() } }

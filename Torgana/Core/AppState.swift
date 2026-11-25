@@ -15,14 +15,8 @@ final class AppState: ObservableObject {
     }
     /// Избранное, изменённое на этом экране: id → в избранном ли. Карточки в других списках сразу видят изменение.
     @Published var favs: [Int: Bool] = [:]
-    /// Сервер уже ответил, кто вошёл (до этого при сохранённой сессии — заставка, без сессии — вход).
-    @Published var meKnown = false
-    /// Сервер не ответил при запуске — на заставке кнопка «Повторить».
-    @Published var offline = false
-    #if DEBUG
-    /// Снимки экранов: показать вход или регистрацию поверх (демо-сервер всегда «вошёл»).
-    @Published var preview: LoginView.Mode?
-    #endif
+    /// Окно входа открыть сразу на регистрации («Создать профиль»).
+    var loginRegister = false
     @Published var toast: Toast?
 
     struct Toast: Equatable { let text: String; let bad: Bool; let id = UUID() }
@@ -38,8 +32,10 @@ final class AppState: ObservableObject {
         #if DEBUG
         // Снимки экранов: запуск с -route /l/5 сразу открывает нужный экран (данные он грузит сам).
         if let r = UserDefaults.standard.string(forKey: "route"), !r.isEmpty {
-            if r == "/login" || r == "/register" { preview = r == "/login" ? .login : .register }
-            else { Nav.shared.open(path: r) }
+            if r == "/login" || r == "/register" {
+                // окно входа — когда профиль уже загружен (иначе его загрузка закроет окно)
+                Task { try? await Task.sleep(nanoseconds: 3_000_000_000); loginRegister = r == "/register"; needLogin = true }
+            } else { Nav.shared.open(path: r) }
         }
         #endif
         Task {
@@ -60,7 +56,7 @@ final class AppState: ObservableObject {
     }
 
     func refreshMe() async {
-        guard let r: MeResponse = try? await API.shared.get("/api/me") else { offline = !meKnown; return }   // нет сети — профиль не трогаем
+        guard let r: MeResponse = try? await API.shared.get("/api/me") else { return }   // нет сети — профиль не трогаем
         if r.user == nil && CookieSync.shared.hasSession {
             // Сервер не узнал сессию (вышли на сайте, удалили профиль, истёк срок) — только тогда она стирается.
             await withCheckedContinuation { c in CookieSync.shared.drop { c.resume() } }
@@ -69,9 +65,6 @@ final class AppState: ObservableObject {
         }
         let changed = me?.id != r.user?.id
         me = r.user
-        meKnown = true
-        offline = false
-        if changed && r.user == nil { Nav.shared.reset() }   // вышли — после входа всё начинается с главной
         if changed { Task { await PushManager.shared.sync(); await PushManager.shared.askOnce() } }
         unread = r.unread ?? 0
         notices = r.notices ?? 0
@@ -86,8 +79,9 @@ final class AppState: ObservableObject {
 
     func isFav(_ id: Int, _ fallback: Bool?) -> Bool { favs[id] ?? fallback ?? false }
 
-    /// Добавить в избранное или убрать.
+    /// Добавить в избранное или убрать. Гостю — предложение войти.
     func toggleFav(_ id: Int, current: Bool) async -> Bool {
+        guard me != nil else { needLogin = true; return current }
         favs[id] = !current
         Haptics.play("light")
         do {
@@ -102,8 +96,9 @@ final class AppState: ObservableObject {
     }
 
     /// Переписка о объявлении (создаётся или находится) и, если задано, предложение цены; затем — открыть чат.
-    /// Ошибка — всплывающим сообщением.
+    /// Гостю — вход. Ошибка — всплывающим сообщением.
     func openChat(listingId: Int, offer: Int? = nil) async {
+        guard me != nil else { needLogin = true; return }
         do {
             let r: IdResult = try await API.shared.post("/api/conversations", ["listingId": listingId])
             if let offer {
@@ -118,6 +113,7 @@ final class AppState: ObservableObject {
 
     /// Подписаться на продавца или отписаться. nil — не получилось (сообщение уже показано).
     func follow(_ userId: Int, _ on: Bool) async -> FollowResult? {
+        guard me != nil else { needLogin = true; return nil }
         do {
             let r: FollowResult = try await API.shared.post("/api/users/\(userId)/follow", ["follow": on])
             Haptics.play("light")
@@ -138,6 +134,7 @@ final class AppState: ObservableObject {
     }
 
     /// Нужно войти — открывается экран входа.
+    @Published var needLogin = false
 }
 
 enum Badge {

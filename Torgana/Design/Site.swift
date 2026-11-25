@@ -117,6 +117,8 @@ struct SiteMenu: View {
                         .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(T.surface))
                     }
                     .buttonStyle(.plain)
+                } else {
+                    Button("Войти или зарегистрироваться") { dismiss(); app.needLogin = true }.buttonStyle(TButton(kind: .dark))
                 }
                 SettingsGroup {
                     SettingsRow(icon: "headphones", color: Tint.green, title: "Поддержка", sub: "Отвечают люди, а не боты") { go("/messages/support") }

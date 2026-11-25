@@ -269,12 +269,22 @@ struct SoftPill<Label: View>: View {
 struct Seg: View {
     let items: [(String, String)]
     @Binding var value: String
+    /// Число у вкладки («Объявления 12») и монета уровня («Репутация»).
+    var counts: [String: Int] = [:]
+    var level: (key: String, level: Int)? = nil
     var body: some View {
         HStack(spacing: 0) {
             ForEach(0..<items.count, id: \.self) { i in
                 let on = value == items[i].0
                 Button { value = items[i].0; Haptics.play("selection") } label: {
-                    Text(items[i].1).font(.on(14, .semibold)).foregroundStyle(on ? T.text : T.text2).lineLimit(1).minimumScaleFactor(0.8)
+                    HStack(spacing: 6) {
+                        if level?.key == items[i].0 { LevelCoin(level: level?.level ?? 0, size: 18) }
+                        Text(items[i].1).font(.on(14, on ? .bold : .semibold)).foregroundStyle(on ? T.text : T.text2).lineLimit(1).minimumScaleFactor(0.8)
+                        if let n = counts[items[i].0] {
+                            Text("\(n)").font(.on(11.5, .semibold)).foregroundStyle(T.onInk)
+                                .padding(.horizontal, 6).frame(minWidth: 20, minHeight: 20).background(Capsule().fill(T.ink))
+                        }
+                    }
                         .frame(maxWidth: .infinity).frame(height: 40)
                         .background(Capsule().fill(on ? T.card : .clear).shadow(color: Color(hex: 0x101010).opacity(on ? 0.08 : 0), radius: 5, y: 2))
                         .contentShape(Capsule())

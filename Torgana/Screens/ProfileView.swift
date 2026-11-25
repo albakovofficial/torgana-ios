@@ -1,54 +1,36 @@
 import SwiftUI
 
-// Профиль (вариант B, 24.11): карточка с переходом цвета (аватарка, имя, уровень, цифры), четыре плитки — объявления,
-// сообщения, сделки и отзывы, подписки; модерация — только администраторам; настройки и помощь — списками; «Выйти» — внизу.
-// Каждый раздел — в одном месте: меню шапки ведёт сюда.
+// Профиль = ваша витрина (решение 25.11, «вариант 2»): сверху та же карточка, что видят покупатели (SellerCard), —
+// с «Изменить профиль» и «Поделиться»; под ней вкладки «Объявления» (свои, со статусами), «Репутация» и «Ещё»
+// (сообщения, сделки, подписки, модерация, настройки, помощь, «Выйти»). Отдельной «Как меня видят покупатели» нет.
 struct ProfileView: View {
     @AppStorage("theme") private var theme = ""   // подпись «Оформление» меняется сразу
     @EnvironmentObject private var app: AppState
     @EnvironmentObject private var nav: Nav
     @StateObject private var store = MyListingsStore()
+    @State private var pub: PublicUser?
     @State private var admin: AdminStats?
     @State private var confirmLogout = false
+    @State private var tab = "ads"
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 if let me = app.me {
-                    hero(me).padding(.top, 12)
-                    tiles(me).padding(.top, 14)
-                    if me.isAdmin == true { moderation.padding(.top, 12) }
-                    SettingsGroup {
-                        SettingsRow(icon: "eye", color: Tint.blue, title: "Как меня видят покупатели", last: true) { nav.push(.user(me.id)) }
+                    if let u = pub {
+                        SellerCard(user: u, count: active, own: true) { ownActions(u) }.padding(.top, 12)
+                    } else {
+                        LoadingView()
                     }
-                    .padding(.top, 22)
-                    SettingsGroup(title: "Настройки") {
-                        SettingsRow(icon: "person.fill", color: Tint.blue, title: "Профиль", sub: "Фото, имя, город, телефон") { nav.push(.settings(.profile)) }
-                        SettingsRow(icon: "bell.fill", color: Tint.red, title: "Уведомления", sub: "Push на этом iPhone и письма") { nav.push(.settings(.notify)) }
-                        SettingsRow(icon: "lock.fill", color: Tint.sky, title: "Пароль и вход", sub: "Почта, Apple, Яндекс, VK") { nav.push(.web("/profile/settings#sp")) }
-                        SettingsRow(icon: "moon.fill", color: Tint.indigo, title: "Оформление", sub: LookSettings.title) { nav.push(.settings(.look)) }
-                        SettingsRow(icon: "nosign", color: Tint.gray, title: "Чёрный список", sub: "Кому нельзя вам писать") { nav.push(.settings(.blocks)) }
-                        SettingsRow(icon: "briefcase.fill", color: Tint.orange, title: "Для бизнеса", sub: "Витрина и значок «ИП проверен»") { nav.push(.web("/profile/settings#s-biz")) }
-                        SettingsRow(icon: "envelope.fill", color: Tint.violet, title: "Аккаунт", sub: me.email ?? "", last: true) { nav.push(.settings(.account)) }
+                    Seg(items: [("ads", "Объявления"), ("rep", "Репутация"), ("more", "Ещё")], value: $tab,
+                        counts: (app.unread + (admin?.total ?? 0)) > 0 ? ["more": app.unread + (admin?.total ?? 0)] : [:],
+                        level: ("rep", pub?.rep?.level ?? me.rep?.level ?? 0))
+                        .padding(.top, 18)
+                    switch tab {
+                    case "rep": ReputationPanel(rep: pub?.rep).padding(.top, 14)
+                    case "more": more(me).padding(.top, 14)
+                    default: MyListingsSection(store: store).padding(.top, 14)
                     }
-                    .padding(.top, 22)
-                    SettingsGroup(title: "Помощь") {
-                        SettingsRow(icon: "headphones", color: Tint.green, title: "Поддержка", sub: "Отвечают люди, а не боты") { nav.push(.support) }
-                        SettingsRow(icon: "questionmark", color: Tint.sky, title: "Помощь и безопасность") { nav.push(.web("/page/help")) }
-                        SettingsRow(icon: "doc.text", color: Tint.gray, title: "Правила и документы", last: true) { nav.push(.doc("rules")) }
-                    }
-                    .padding(.top, 22)
-                    Button { confirmLogout = true } label: {
-                        Label("Выйти", systemImage: "rectangle.portrait.and.arrow.right")
-                            .font(.on(16, .semibold)).foregroundStyle(T.danger)
-                            .frame(maxWidth: .infinity).frame(height: 50)
-                            .background(Capsule().fill(T.card))
-                            .overlay(Capsule().strokeBorder(T.line, lineWidth: 1))
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.top, 22)
-                    Text("Торгана \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "") (\(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""))")
-                        .font(.on(12)).foregroundStyle(T.faint).frame(maxWidth: .infinity).padding(.top, 12)
                 }
             }
             .padding(.horizontal, 20)
@@ -64,104 +46,66 @@ struct ProfileView: View {
 
     private func reload() async {
         guard let me = app.me else { return }
+        if let r: UserResponse = try? await API.shared.get("/api/users/\(me.id)") { pub = r.user }
         await store.load()
         if me.isAdmin == true { admin = try? await API.shared.get("/api/admin/stats") }
     }
 
     private var active: Int { store.items.filter { $0.status == "active" }.count }
 
-    // Карточка: фирменный переход цвета, скругление 26; аватарка 64 с камерой, шестерёнка — профиль; три цифры.
-    private func hero(_ me: Me) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .center, spacing: 14) {
-                Button { nav.push(.settings(.profile)) } label: {
-                    Avatar(name: me.name, url: me.avatar, size: 64)
-                        .overlay(Circle().strokeBorder(.white.opacity(0.5), lineWidth: 3))
-                        .overlay(alignment: .bottomTrailing) {
-                            Image(systemName: "camera.fill").font(.system(size: 11, weight: .semibold)).foregroundStyle(T.accent)
-                                .frame(width: 26, height: 26).background(Circle().fill(.white)).offset(x: 4, y: 4)
-                        }
+    private func ownActions(_ u: PublicUser) -> some View {
+        HStack(spacing: 8) {
+            Button { nav.push(.settings(.profile)) } label: {
+                Label("Изменить профиль", systemImage: "person").font(.on(15, .semibold)).foregroundStyle(T.text).lineLimit(1)
+                    .frame(maxWidth: .infinity).frame(height: 46).background(Capsule().fill(T.surface))
+            }
+            .buttonStyle(.plain)
+            ShareLink(item: API.shared.url("/u/\(u.id)"), subject: Text(u.name)) {
+                Label("Поделиться", systemImage: "square.and.arrow.up").font(.on(15, .semibold)).foregroundStyle(T.text).lineLimit(1).fixedSize()
+                    .padding(.horizontal, 16).frame(height: 46).background(Capsule().fill(T.surface))
+            }
+        }
+    }
+
+    // «Ещё»: разделы, модерация (только администраторам), настройки, помощь, выход.
+    private func more(_ me: Me) -> some View {
+        VStack(alignment: .leading, spacing: 22) {
+            if me.isAdmin == true { moderation }
+            SettingsGroup {
+                SettingsRow(icon: "message.fill", color: Tint.green, title: "Сообщения",
+                            sub: app.unread > 0 ? "\(app.unread) \(Fmt.plural(app.unread, "новое", "новых", "новых"))" : "Переписки с покупателями и продавцами",
+                            badge: app.unread) { nav.open(path: "/messages") }
+                SettingsRow(icon: "star.fill", color: Tint.orange, title: "Сделки и отзывы",
+                            sub: (me.rep?.deals ?? 0) > 0 ? "\(me.rep?.deals ?? 0) \(Fmt.plural(me.rep?.deals ?? 0, "сделка", "сделки", "сделок"))" : "Пока нет") { nav.push(.web("/profile/reputation")) }
+                SettingsRow(icon: "person.2.fill", color: Tint.violet, title: "Подписки", sub: "Продавцы и новинки", last: true) { nav.push(.web("/profile/following")) }
+            }
+            SettingsGroup(title: "Настройки") {
+                SettingsRow(icon: "person.fill", color: Tint.blue, title: "Профиль", sub: "Фото, имя, город, телефон") { nav.push(.settings(.profile)) }
+                SettingsRow(icon: "bell.fill", color: Tint.red, title: "Уведомления", sub: "Push на этом iPhone и письма") { nav.push(.settings(.notify)) }
+                SettingsRow(icon: "lock.fill", color: Tint.sky, title: "Пароль и вход", sub: "Почта, Apple, Яндекс, VK") { nav.push(.web("/profile/settings#sp")) }
+                SettingsRow(icon: "moon.fill", color: Tint.indigo, title: "Оформление", sub: LookSettings.title) { nav.push(.settings(.look)) }
+                SettingsRow(icon: "nosign", color: Tint.gray, title: "Чёрный список", sub: "Кому нельзя вам писать") { nav.push(.settings(.blocks)) }
+                SettingsRow(icon: "briefcase.fill", color: Tint.orange, title: "Для бизнеса", sub: "Витрина и значок «ИП проверен»") { nav.push(.web("/profile/settings#s-biz")) }
+                SettingsRow(icon: "envelope.fill", color: Tint.violet, title: "Аккаунт", sub: me.email ?? "", last: true) { nav.push(.settings(.account)) }
+            }
+            SettingsGroup(title: "Помощь") {
+                SettingsRow(icon: "headphones", color: Tint.green, title: "Поддержка", sub: "Отвечают люди, а не боты") { nav.push(.support) }
+                SettingsRow(icon: "questionmark", color: Tint.sky, title: "Помощь и безопасность") { nav.push(.web("/page/help")) }
+                SettingsRow(icon: "doc.text", color: Tint.gray, title: "Правила и документы", last: true) { nav.push(.doc("rules")) }
+            }
+            VStack(spacing: 12) {
+                Button { confirmLogout = true } label: {
+                    Label("Выйти", systemImage: "rectangle.portrait.and.arrow.right")
+                        .font(.on(16, .semibold)).foregroundStyle(T.danger)
+                        .frame(maxWidth: .infinity).frame(height: 50)
+                        .background(Capsule().fill(T.card))
+                        .overlay(Capsule().strokeBorder(T.line, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(me.avatar == nil ? "Добавить фото профиля" : "Сменить фото профиля")
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
-                        Text(me.name).font(.on(20, .heavy)).foregroundStyle(.white).lineLimit(1)
-                        if me.badges?.official == true { Verified(size: 20) }
-                    }
-                    Text([me.city, "с \(Fmt.monthYear(me.createdAt))"].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
-                        .font(.on(13)).foregroundStyle(.white.opacity(0.85)).lineLimit(1)
-                    if let lvl = me.rep?.levelName {
-                        HStack(spacing: 6) {
-                            LevelCoin(level: me.rep?.level ?? 0, size: 18)
-                            Text(lvl).font(.on(12.5, .bold)).foregroundStyle(.white)
-                        }
-                        .padding(.leading, 4).padding(.trailing, 10).frame(height: 26)
-                        .background(Capsule().fill(.white.opacity(0.18)))
-                        .padding(.top, 4)
-                    }
-                }
-                Spacer(minLength: 0)
-                Button { nav.push(.settings(.profile)) } label: {
-                    Image(systemName: "gearshape").font(.system(size: 18, weight: .medium)).foregroundStyle(.white)
-                        .frame(width: 40, height: 40).background(Circle().fill(.white.opacity(0.16)))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Профиль и фото")
-            }
-            HStack(spacing: 8) {
-                num(active, Fmt.plural(active, "активное", "активных", "активных")) { nav.push(.myListings) }
-                num(store.items.filter { $0.status == "sold" }.count, "продано") { nav.push(.myListings) }
-                num(me.rep?.deals ?? 0, Fmt.plural(me.rep?.deals ?? 0, "сделка", "сделки", "сделок")) { nav.push(.web("/profile/reputation")) }
+                Text("Торгана \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "") (\(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""))")
+                    .font(.on(12)).foregroundStyle(T.faint).frame(maxWidth: .infinity)
             }
         }
-        .padding(18)
-        .background(RoundedRectangle(cornerRadius: 26, style: .continuous).fill(T.grad))
-    }
-
-    private func num(_ n: Int, _ label: String, _ action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 0) {
-                Text("\(n)").font(.on(18, .heavy)).foregroundStyle(.white)
-                Text(label).font(.on(12)).foregroundStyle(.white.opacity(0.85)).lineLimit(1)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 10).padding(.vertical, 8)
-            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.white.opacity(0.14)))
-        }
-        .buttonStyle(.plain)
-    }
-
-    // Четыре крупные плитки со счётчиками.
-    private func tiles(_ me: Me) -> some View {
-        LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-            tile("square.grid.2x2", Tint.blue, "Мои объявления", "\(active) \(Fmt.plural(active, "активное", "активных", "активных"))") { nav.push(.myListings) }
-            tile("message", Tint.green, "Сообщения", app.unread > 0 ? "\(app.unread) \(Fmt.plural(app.unread, "новое", "новых", "новых"))" : "Переписки", badge: app.unread) { nav.open(path: "/messages") }
-            tile("star", Tint.orange, "Сделки и отзывы", (me.rep?.deals ?? 0) > 0 ? "\(me.rep?.deals ?? 0) \(Fmt.plural(me.rep?.deals ?? 0, "сделка", "сделки", "сделок"))" : "Пока нет") { nav.push(.web("/profile/reputation")) }
-            tile("person.2", Tint.violet, "Подписки", "Продавцы и новинки") { nav.push(.web("/profile/following")) }
-        }
-    }
-
-    private func tile(_ icon: String, _ color: Color, _ title: String, _ sub: String, badge: Int = 0, _ action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .top) {
-                    Image(systemName: icon).font(.system(size: 18, weight: .medium)).foregroundStyle(color)
-                        .frame(width: 40, height: 40)
-                        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(color.opacity(0.12)))
-                    Spacer()
-                    CountBadge(n: badge)
-                }
-                Spacer(minLength: 10)
-                Text(title).font(.on(15.5, .bold)).foregroundStyle(T.text).lineLimit(1)
-                Text(sub).font(.on(12.5)).foregroundStyle(T.muted).lineLimit(1)
-            }
-            .padding(14)
-            .frame(maxWidth: .infinity, minHeight: 116, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(T.card))
-            .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(T.line, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
     }
 
     // Модерация — только администраторам: что ждёт решения; открывается модерация сайта.
@@ -339,25 +283,6 @@ struct MyCard: View {
         case "sold": return T.good
         default: return T.muted
         }
-    }
-}
-
-// Отдельная страница «Мои объявления» (из уведомлений и ссылок /profile/listings).
-struct MyListingsView: View {
-    @StateObject private var store = MyListingsStore()
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                PageHeader(title: "Мои объявления", route: .myListings)
-                MyListingsSection(store: store).padding(.top, 18)
-            }
-            .padding(.horizontal, 20)
-            TabBarSpace()
-        }
-        .sitePage()
-        .refreshable { await store.load() }
-        .task { await store.load() }
     }
 }
 

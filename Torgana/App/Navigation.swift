@@ -7,7 +7,6 @@ enum Route: Hashable {
     case search(SearchQuery)
     case chat(Int)
     case support
-    case myListings
     case notices
     case edit(Int)
     case user(Int)
@@ -69,7 +68,6 @@ extension Route {
         case .search(let q): return q.q.isEmpty ? "Поиск" : "«\(q.q)»"
         case .chat: return "Чат"
         case .support: return "Поддержка"
-        case .myListings: return "Мои объявления"
         case .notices: return "Уведомления"
         case .edit: return "Редактирование"
         case .user: return "Продавец"
@@ -102,7 +100,11 @@ final class Nav: ObservableObject {
         Binding(get: { self.paths[tab] ?? [] }, set: { self.paths[tab] = $0 })
     }
 
-    func push(_ route: Route) { paths[tab, default: []].append(route) }
+    func push(_ route: Route) {
+        // Своя страница продавца — это вкладка «Профиль» (витрина), отдельной нет.
+        if case .user(let id) = route, id == AppState.shared.me?.id { tab = .profile; paths[.profile] = []; return }
+        paths[tab, default: []].append(route)
+    }
 
     /// С чистого листа: все вкладки — к началу, открыта главная (после выхода из профиля).
     func reset() { paths = [:]; tab = .home }
@@ -125,7 +127,7 @@ final class Nav: ObservableObject {
         case "/favorites": tab = .favorites; paths[.favorites] = []; return
         case "/new": tab = .post; paths[.post] = []; return
         case "/profile": tab = .profile; paths[.profile] = []; return
-        case "/profile/listings": tab = .profile; paths[.profile] = [Route.myListings]; return
+        case "/profile/listings": tab = .profile; paths[.profile] = []; return   // свои объявления — первая вкладка профиля
         case "/profile/settings": tab = .profile; paths[.profile] = []; return   // настройки — в профиле
         default: break
         }
@@ -219,7 +221,6 @@ struct RouteView: View {
         case .search(let q): SearchView(query: q)
         case .chat(let id): ChatView(kind: .conv(id))
         case .support: ChatView(kind: .support)
-        case .myListings: MyListingsView()
         case .notices: NoticesView()
         case .edit(let id): EditorView(editId: id).hidesTabBar()
         case .user(let id): UserView(id: id)

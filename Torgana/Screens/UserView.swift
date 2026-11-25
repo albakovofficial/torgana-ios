@@ -92,22 +92,23 @@ struct UserView: View {
             }
             .frame(height: 100).frame(maxWidth: .infinity).clipped()
             VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .bottom, spacing: 10) {
-                    Avatar(name: u.name, url: u.avatar, size: 84)
-                        .overlay(Circle().strokeBorder(T.card, lineWidth: 4))
-                        .shadow(color: Color(hex: 0x161A2B).opacity(0.15), radius: 10, y: 6)
-                    if shop?.official == true {
-                        Text("Официальный аккаунт").font(.on(13, .bold)).foregroundStyle(T.accent)
-                            .padding(.horizontal, 11).frame(height: 28).background(Capsule().fill(T.accentSoft)).padding(.bottom, 6)
-                    } else { RepLine(rep: u.rep, medal: u.badges?.first).padding(.bottom, 6) }
-                }
-                .padding(.top, -42)
+                Avatar(name: u.name, url: u.avatar, size: 84)
+                    .overlay(Circle().strokeBorder(T.card, lineWidth: 4))
+                    .shadow(color: Color(hex: 0x161A2B).opacity(0.15), radius: 10, y: 6)
+                    .padding(.top, -42)
                 HStack(spacing: 6) {
                     Text(shop?.name ?? u.name).font(.on(22, .heavy)).foregroundStyle(T.text)
                     if u.badges?.official == true || u.badges?.shop == true { Verified(size: 22) }
                 }
                 .padding(.top, 10)
                 Text(sub).font(.on(13.5)).foregroundStyle(T.muted).padding(.top, 3).fixedSize(horizontal: false, vertical: true)
+                Group {
+                    if shop?.official == true {
+                        Text("Официальный аккаунт").font(.on(13, .bold)).foregroundStyle(T.accent)
+                            .padding(.horizontal, 11).frame(height: 28).background(Capsule().fill(T.accentSoft))
+                    } else { RepLine(rep: u.rep, medal: u.badges?.first) }
+                }
+                .padding(.top, 10)
                 // Описание магазина: три строки, «Читать полностью» — раскрыть.
                 if let about = shop?.about, !about.isEmpty {
                     Text(about).font(.on(14.5)).foregroundStyle(T.text2).lineSpacing(2)
@@ -139,14 +140,17 @@ struct UserView: View {
     private func actions(_ u: PublicUser) -> some View {
         HStack(spacing: 8) {
             if u.shop?.official != true {
-                Button { write() } label: { Label("Написать", systemImage: "message") }
-                    .buttonStyle(TButton(kind: .accent, height: 48))
+                Button { write() } label: {
+                    Label("Написать", systemImage: "message").font(.on(15, .semibold)).foregroundStyle(.white).lineLimit(1)
+                        .frame(maxWidth: .infinity).frame(height: 48).background(Capsule().fill(T.grad))
+                }
+                .buttonStyle(.plain)
             }
             Button {
                 Task { if let r = await app.follow(u.id, !(u.following ?? false)) { user?.following = r.following; if let n = r.followers { user?.followers = n } } }
             } label: {
                 Label(u.following == true ? "Вы подписаны" : "Подписаться", systemImage: u.following == true ? "bell.fill" : "bell")
-                    .font(.on(15, .semibold)).foregroundStyle(T.text).lineLimit(1)
+                    .font(.on(15, .semibold)).foregroundStyle(T.text).lineLimit(1).fixedSize()
                     .padding(.horizontal, 14).frame(height: 48)
                     .frame(maxWidth: u.shop?.official == true ? .infinity : nil)
                     .background(Capsule().fill(T.surface))

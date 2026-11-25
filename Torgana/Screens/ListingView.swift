@@ -1,10 +1,21 @@
 import SwiftUI
 
-// Объявление — как страница объявления сайта на телефоне: путь «Главная › раздел › город», фото, карточка
-// (название, избранное, поделиться, просмотры, цена, «Написать продавцу», «Предложить цену»), характеристики,
-// описание, условия, продавец и подписка, предупреждение о мошенниках, похожие.
+// Объявление — как страница объявления сайта на телефоне: фото, карточка (название, избранное, поделиться,
+// просмотры, цена, «Написать продавцу», «Предложить цену»), характеристики, описание, условия, продавец,
+// предупреждение о мошенниках, похожие. Она же — превью на последнем шаге подачи (draft).
 struct ListingView: View {
     let id: Int
+    /// Превью при подаче («Всё верно?»): та же страница без кнопок покупателя; «Изменить» возвращает к полю.
+    var draft: Draft? = nil
+
+    struct Draft {
+        let data: ListingResponse
+        /// Снятые фото — показываем сразу, не дожидаясь сервера (по порядку с data.listing.photos).
+        let images: [UIImage?]
+        let edit: (Field) -> Void
+    }
+    enum Field { case photos, price, text }
+
     @EnvironmentObject private var app: AppState
     @EnvironmentObject private var nav: Nav
     @State private var data: ListingResponse?
@@ -16,6 +27,10 @@ struct ListingView: View {
     @State private var writing = false
 
     var body: some View {
+        if let draft { blocks(draft.data) } else { screen }
+    }
+
+    private var screen: some View {
         Group {
             if let d = data { content(d) }
             else if let error { EmptyState(title: "Не открылось", text: error, button: "Повторить") { Task { await load() } }.padding(20) }
@@ -47,28 +62,43 @@ struct ListingView: View {
         }
     }
 
-    @ViewBuilder private func content(_ d: ListingResponse) -> some View {
-        let l = d.listing
+    private func content(_ d: ListingResponse) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 BackButton().padding(.top, 10)
-                photos(l).padding(.top, 14)
-                panel(l).padding(.top, 28)
-                if l.status != nil && l.status != "active" { statusNote(l).padding(.top, 16) }
-                if let specs = l.specs, !specs.isEmpty { specsBlock(l, specs).padding(.top, 36) }
-                if let text = l.description, !text.isEmpty {
-                    section("Описание") { Text(text).font(.on(18)).foregroundStyle(T.text).lineSpacing(6).textSelection(.enabled) }
-                        .padding(.top, 36)
-                }
-                conditions(l).padding(.top, 36)
-                if let s = d.seller { seller(s, own: l.isOwner == true).padding(.top, 36) }
+                blocks(d).padding(.top, 14)
+            }
+            .padding(.horizontal, 20)
+            TabBarSpace()
+        }
+    }
+
+    @ViewBuilder private func blocks(_ d: ListingResponse) -> some View {
+        let l = d.listing
+        VStack(alignment: .leading, spacing: 0) {
+            photos(l)
+            panel(l).padding(.top, 28)
+            if draft == nil, l.status != nil && l.status != "active" { statusNote(l).padding(.top, 16) }
+            if let specs = l.specs, !specs.isEmpty { specsBlock(l, specs).padding(.top, 36) }
+            if let text = l.description, !text.isEmpty {
+                section("Описание", edit: .text) { Text(text).font(.on(18)).foregroundStyle(T.text).lineSpacing(6).textSelection(.enabled) }
+                    .padding(.top, 36)
+            }
+            conditions(l).padding(.top, 36)
+            if let s = d.seller { seller(s, own: l.isOwner == true).padding(.top, 36) }
+            if draft == nil {
                 fraud.padding(.top, 16)
                 if let similar = d.similar, !similar.isEmpty {
                     section("Похожие объявления") { ListingGrid(items: similar) }.padding(.top, 36)
                 }
             }
-            .padding(.horizontal, 20)
-            TabBarSpace()
+        }
+    }
+
+    /// «Изменить» в превью подачи.
+    @ViewBuilder private func editLink(_ f: Field) -> some View {
+        if let draft {
+            Button("Изменить") { draft.edit(f) }.font(.on(15, .semibold)).foregroundStyle(T.accent).buttonStyle(.plain)
         }
     }
 
@@ -79,14 +109,21 @@ struct ListingView: View {
             .overlay {
                 if list.isEmpty {
                     T.surface.overlay(Image(systemName: "photo").font(.system(size: 40)).foregroundStyle(T.faint))
+                        .onTapGesture { draft?.edit(.photos) }
                 } else {
                     TabView(selection: $page) {
                         ForEach(Array(list.enumerated()), id: \.offset) { i, p in
-                            RemoteImage(url: API.shared.media(p))
-                                .clipped()
-                                .contentShape(Rectangle())
-                                .onTapGesture { gallery = true }
-                                .tag(i)
+                            Group {
+                                if let img = draft?.images[safe: i] ?? nil {
+                                    Color.clear.overlay(Image(uiImage: img).resizable().scaledToFill())
+                                } else {
+                                    RemoteImage(url: API.shared.media(p))
+                                }
+                            }
+                            .clipped()
+                            .contentShape(Rectangle())
+                            .onTapGesture { if let draft { draft.edit(.photos) } else { gallery = true } }
+                            .tag(i)
                         }
                     }
                     .tabViewStyle(.page(indexDisplayMode: .never))
@@ -101,6 +138,15 @@ struct ListingView: View {
                         .padding(.bottom, 12)
                 }
             }
+            .overlay(alignment: .topTrailing) {
+                if let draft {
+                    Button { draft.edit(.photos) } label: {
+                        Label("Фото", systemImage: "pencil").font(.on(13, .semibold)).foregroundStyle(T.accent)
+                            .padding(.horizontal, 12).frame(height: 32).background(Capsule().fill(T.card))
+                    }
+                    .buttonStyle(.plain).padding(12)
+                }
+            }
             .background(T.surface)
             .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
     }
@@ -113,13 +159,16 @@ struct ListingView: View {
                     Text(l.title).font(.on(24, .bold)).foregroundStyle(T.text).fixedSize(horizontal: false, vertical: true)
                     let place = [l.metro?.name.map { "м. \($0)" }, l.city].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
                     Text([place, Fmt.dayTime(l.createdAt)].filter { !$0.isEmpty }.joined(separator: " · ")).font(.on(14)).foregroundStyle(T.muted)
+                    if draft == nil {
                     VStack(alignment: .leading, spacing: 6) {
                         Label("\(l.views ?? 0) \(Fmt.plural(l.views ?? 0, "просмотр", "просмотра", "просмотров"))", systemImage: "eye")
                         Label("в избранном у \(l.favCount ?? 0)", systemImage: "heart")
                     }
                     .font(.on(14)).foregroundStyle(T.muted).labelStyle(MetaLabel())
+                    }
                 }
                 Spacer(minLength: 0)
+                if draft == nil {
                 if l.isOwner != true {
                     let on = app.isFav(l.id, l.isFav)
                     Button { Task { _ = await app.toggleFav(l.id, current: on) } } label: {
@@ -132,14 +181,18 @@ struct ListingView: View {
                     RoundIcon(icon: "square.and.arrow.up")
                 }
                 .accessibilityLabel("Поделиться")
+                }
             }
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Text(Fmt.price(l.price, unit: l.priceUnit)).font(.on(36, .heavy)).foregroundStyle(T.text).minimumScaleFactor(0.6).lineLimit(1)
                 if let was = l.priceWas, let p = l.price, was > p {
                     Text(Fmt.price(was)).font(.on(17)).strikethrough().foregroundStyle(T.faint)
                 }
+                Spacer(minLength: 0)
+                editLink(.price)
             }
             .padding(.top, 22)
+            if draft == nil {
             VStack(spacing: 10) {
                 if l.isOwner == true {
                     Button { nav.push(.edit(l.id)) } label: { Label("Редактировать", systemImage: "pencil") }
@@ -171,6 +224,7 @@ struct ListingView: View {
                 }
             }
             .padding(.top, 20)
+            }
         }
         .padding(.horizontal, 20).padding(.vertical, 22)
         .background(RoundedRectangle(cornerRadius: 28, style: .continuous).fill(T.card).shadow(color: Color(hex: 0x101010).opacity(0.08), radius: 20, y: 12))
@@ -201,9 +255,13 @@ struct ListingView: View {
             .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(T.warnSoft))
     }
 
-    private func section<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
+    private func section<C: View>(_ title: String, edit: Field? = nil, @ViewBuilder _ content: () -> C) -> some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(title).font(.on(26, .bold)).foregroundStyle(T.text)
+            HStack(alignment: .firstTextBaseline) {
+                Text(title).font(.on(26, .bold)).foregroundStyle(T.text)
+                Spacer(minLength: 0)
+                if let edit { editLink(edit) }
+            }
             content()
         }
     }
@@ -266,40 +324,62 @@ struct ListingView: View {
         }
     }
 
-    // Продавец: карточка с обводкой, под ней «Подписаться» и число подписчиков.
+    // Продавец (решение 26.11, «A1»): серая плашка — аватар с монетой уровня, имя, уровень; под чертой — сделки,
+    // скорость ответа, «без жалоб» (только то, что есть). Покупателю — «Все объявления» и колокольчик подписки.
     private func seller(_ s: Seller, own: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let r = s.rep
+        let deals = r?.deals ?? 0
+        var facts: [(icon: String, text: String, tint: Color)] = []
+        if deals > 0 { facts.append(("checkmark.circle", "\(deals) \(Fmt.plural(deals, "сделка", "сделки", "сделок"))", T.accent)) }
+        if let t = r?.replyText { facts.append(("clock", "отвечает \(t)", T.accent)) }
+        if deals > 0 && (r?.complaints ?? 0) == 0 { facts.append(("checkmark.shield", "без жалоб", T.good)) }
+        return VStack(alignment: .leading, spacing: 0) {
             Button { nav.push(.user(s.id)) } label: {
-                HStack(spacing: 16) {
-                    Avatar(name: s.name, url: s.avatar, size: 56)
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 6) {
-                            Text(s.name).font(.on(18, .bold)).foregroundStyle(T.text).lineLimit(1)
-                            if s.badges?.official == true || s.badges?.shop == true {
-                                Verified(size: 18)
-                            }
+                HStack(spacing: 12) {
+                    Avatar(name: s.name, url: s.avatar, size: 52)
+                        .overlay(alignment: .bottomTrailing) {
+                            if let lvl = r?.level { LevelCoin(level: lvl, size: 22).background(Circle().fill(T.surface).padding(-2)).offset(x: 3, y: 3) }
                         }
-                        RepLine(rep: s.rep, medal: s.badges?.first)
-                        Text("На Торгане с \(Fmt.monthYear(s.createdAt)) · \(s.activeCount ?? 0) \(Fmt.plural(s.activeCount ?? 0, "объявление", "объявления", "объявлений"))")
-                            .font(.on(14)).foregroundStyle(T.muted).fixedSize(horizontal: false, vertical: true)
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Text(s.name).font(.on(17, .heavy)).foregroundStyle(T.text).lineLimit(1)
+                            if s.badges?.official == true || s.badges?.shop == true { Verified(size: 16) }
+                        }
+                        if let name = r?.levelName { Text(name).font(.on(14, .bold)).foregroundStyle(LevelPill.tint(r?.level ?? 0)) }
                     }
                     Spacer(minLength: 4)
-                    Image(systemName: "chevron.right").foregroundStyle(T.text).font(.system(size: 15, weight: .semibold))
+                    if draft == nil { Image(systemName: "chevron.right").foregroundStyle(T.muted).font(.system(size: 15, weight: .semibold)) }
                 }
-                .padding(.horizontal, 18).padding(.vertical, 22)
-                .background(RoundedRectangle(cornerRadius: 28, style: .continuous).fill(T.card))
-                .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).strokeBorder(T.line, lineWidth: 1))
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            if !own {
-                Button { Task { if let r = await app.follow(s.id, !(data?.seller?.following ?? false)) { data?.seller?.following = r.following; if let n = r.followers { data?.seller?.followers = n } } } } label: {
-                    Label(s.following == true ? "Вы подписаны" : "Подписаться", systemImage: s.following == true ? "bell.fill" : "bell")
+            .disabled(draft != nil)
+            if !facts.isEmpty {
+                T.line.frame(height: 1).padding(.vertical, 12)
+                FlowLayout(spacing: 14) {
+                    ForEach(Array(facts.enumerated()), id: \.offset) { _, f in
+                        HStack(spacing: 5) {
+                            Image(systemName: f.icon).font(.system(size: 13, weight: .semibold)).foregroundStyle(f.tint)
+                            Text(f.text).font(.on(13.5, .semibold)).foregroundStyle(T.text2)
+                        }
+                    }
                 }
-                .buttonStyle(TButton(kind: .soft, height: 52))
-                (Text("\(s.followers ?? 0)").bold().foregroundColor(T.text) + Text(" \(Fmt.plural(s.followers ?? 0, "подписчик", "подписчика", "подписчиков")) · узнают о новых объявлениях первыми").foregroundColor(T.muted))
-                    .font(.on(14))
+            }
+            if draft == nil && !own {
+                HStack(spacing: 8) {
+                    Button("Все объявления · \(s.activeCount ?? 0)") { nav.push(.user(s.id)) }
+                        .buttonStyle(TButton(kind: .line, height: 44))
+                    Button { Task { if let r = await app.follow(s.id, !(data?.seller?.following ?? false)) { data?.seller?.following = r.following; if let n = r.followers { data?.seller?.followers = n } } } } label: {
+                        RoundIcon(icon: s.following == true ? "bell.fill" : "bell", size: 44, fill: T.accentSoft, tint: T.accent)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(s.following == true ? "Вы подписаны" : "Подписаться")
+                }
+                .padding(.top, 14)
             }
         }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(T.surface))
     }
 
     private var fraud: some View {

@@ -371,3 +371,8 @@ struct BlockSheet: View {
         }
     }
 }
+
+extension Array {
+    /// Элемент или nil, если индекса нет.
+    subscript(safe i: Int) -> Element? { indices.contains(i) ? self[i] : nil }
+}

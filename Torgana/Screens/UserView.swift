@@ -160,13 +160,11 @@ struct SellerCard<Actions: View>: View {
     @EnvironmentObject private var nav: Nav
     @State private var aboutOpen = false
 
-    static var replyText: [String: String] { ["hour": "за час", "hours": "за 1–3 ч", "day": "в течение дня", "days": "за 1–2 дня"] }
-
     var body: some View {
         let u = user
         let shop = u.shop
         let sub = [u.city, u.createdAt.map { "на Торгане с \(Fmt.monthYear($0))" },
-                   u.rep?.reply?.time.flatMap { Self.replyText[$0] }.map { "отвечает \($0)" }]
+                   u.rep?.replyText.map { "отвечает \($0)" }]
             .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
         VStack(alignment: .leading, spacing: 0) {
             ZStack(alignment: .topTrailing) {
@@ -289,7 +287,7 @@ struct ReputationPanel: View {
                 if r?.newbie == false {
                     HStack(spacing: 8) {
                         fact("\(r?.deals ?? 0)", Fmt.plural(r?.deals ?? 0, "сделка", "сделки", "сделок"))
-                        if let t = r?.reply?.time.flatMap({ SellerCard<EmptyView>.replyText[$0] }) { fact(t, "ответ") }
+                        if let t = r?.replyText { fact(t, "ответ") }
                         fact("\(r?.complaints ?? 0)", Fmt.plural(r?.complaints ?? 0, "жалоба", "жалобы", "жалоб"), bad: (r?.complaints ?? 0) > 0)
                     }
                 }

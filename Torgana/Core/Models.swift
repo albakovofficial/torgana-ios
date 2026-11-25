@@ -65,6 +65,11 @@ struct Rep: Codable, Hashable {
 }
 
 struct RepReply: Codable, Hashable { let time: String? }
+
+extension Rep {
+    /// Скорость ответа словами: «за час», «в течение дня».
+    var replyText: String? { reply?.time.flatMap { ["hour": "за час", "hours": "за 1–3 ч", "day": "в течение дня", "days": "за 1–2 дня"][$0] } }
+}
 struct RepTag: Codable, Hashable { let tag: String; let n: Int }
 
 /// Магазин (тариф для бизнеса): название, обложка, описание; official — официальный аккаунт Торганы.
@@ -197,6 +202,8 @@ struct Spec: Codable, Hashable {
         else { value = nil }
     }
     private enum K: String, CodingKey { case label, value }
+    /// Превью при подаче: строки характеристик собираем сами, как describe() сервера.
+    init(label: String, value: String) { self.label = label; self.value = value }
 }
 
 struct Station: Codable, Hashable { let name: String?; let line: String?; let color: String? }

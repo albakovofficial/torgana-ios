@@ -1,9 +1,9 @@
 import SwiftUI
 import PhotosUI
 
-// Подать или изменить объявление: фото (до 10, первое — главное), раздел и подраздел, характеристики подраздела,
-// название, описание, цена, состояние, город, доставка, торг, обмен. Если подключён ИИ — заполняем по первому фото.
-// Публикуется после проверки модератором (как на сайте).
+// Подать или изменить объявление в три шага: фото (до 10, первое — обложка); категория, название, характеристики,
+// цена, описание, состояние, город; превью страницы объявления с торгом, обменом и доставкой.
+// Если подключён ИИ — заполняем по первому фото. Публикуется после проверки модератором (как на сайте).
 struct EditorView: View {
     var editId: Int? = nil
 
@@ -41,8 +41,15 @@ struct EditorView: View {
 
     @State private var step = 0
     @State private var stepError: String?
+    /// После «Изменить» в превью — к какому полю прокрутить.
+    @State private var jump: String?
+    @State private var pickingCat = false
+    @State private var gridW: CGFloat = 0
 
-    private static let steps = ["Фото", "Что и сколько", "Отправка"]
+    private static let stepCount = 3
+    private var stepTitle: String { [editId == nil ? "Новое объявление" : "Редактирование", "Что продаёте", "Всё верно?"][step] }
+
+    private enum Slot { case photo(EditorPhoto), add, empty }
 
     var body: some View {
         Group {
@@ -58,263 +65,290 @@ struct EditorView: View {
         .onChange(of: done) { _, _ in syncDock() }
         .onChange(of: app.me?.id) { _, _ in syncDock() }
         .onChange(of: picked) { _, items in Task { await add(items) } }
+        #if DEBUG
+        .onAppear { demoStep() }
+        .onChange(of: app.config?.categories.count ?? 0) { _, _ in demoStep() }
+        #endif
         .sheet(isPresented: $cityPicker) { CityPicker(city: $city) }
     }
 
-    /// Пока заполняют форму, вместо нижнего меню — панель «Назад / Далее» (как на сайте).
+    /// Пока заполняют форму, вместо нижнего меню — панель «Далее» / «Опубликовать».
     private func syncDock() { if editId == nil { nav.editorDock = app.me != nil && done == nil } }
 
     private var subs: [Subcategory] { app.config?.subs(category) ?? [] }
     private var fields: [FieldDef] { subs.first { $0.id == sub }?.fields ?? [] }
 
-    // MARK: шаги
+    // MARK: шаги (решение 26.11): стрелка и заголовок шага, тонкие полоски, без пояснений; шаг 3 — превью страницы объявления.
     private var wizard: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    PageHeader(title: editId == nil ? "Новое объявление" : "Редактирование") {
-                        if editId != nil { dismiss() } else { nav.open(path: "/profile/listings") }
+                    PageHeader(title: stepTitle) {
+                        if step > 0 { go(step - 1) } else if editId != nil { dismiss() } else { nav.open(path: "/profile/listings") }
                     }
                     .id("top")
-                    Text(editId == nil ? "Бесплатно и без лимитов. Каждое объявление проверяет модератор — обычно это несколько часов."
-                         : "После сохранения объявление снова проверит модератор — обычно несколько часов. Пока идёт проверка, его не видно в поиске.")
-                        .font(.on(15)).foregroundStyle(T.muted).lineSpacing(4).padding(.top, 10)
-                    stepsBar.padding(.top, 22)
-                    stepCard.padding(.top, 20).padding(.horizontal, -6)
+                    stepsBar.padding(.top, 12)
+                    if let stepError {
+                        Label(stepError, systemImage: "exclamationmark.circle").font(.on(14, .semibold)).foregroundStyle(T.danger)
+                            .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+                            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(T.dangerSoft))
+                            .padding(.top, 14)
+                    }
+                    Group {
+                        switch step {
+                        case 0: photosStep
+                        case 1: whatStep
+                        default: sendStep
+                        }
+                    }
+                    .padding(.top, 20)
                 }
                 .padding(.horizontal, 20)
                 Color.clear.frame(height: 110)
             }
             .scrollDismissesKeyboard(.interactively)
-            .onChange(of: step) { _, _ in withAnimation { proxy.scrollTo("top", anchor: .top) } }
+            .onChange(of: step) { _, _ in
+                let to = jump ?? "top"
+                jump = nil
+                Task { @MainActor in try? await Task.sleep(for: .milliseconds(60)); withAnimation { proxy.scrollTo(to, anchor: .top) } }
+            }
         }
         .overlay(alignment: .bottom) { dock }
     }
 
-    // Полоски шагов: пройденные и текущий — синие, подписи 12 (текущий — жирнее и тёмный).
     private var stepsBar: some View {
-        HStack(alignment: .top, spacing: 4) {
-            ForEach(0..<Self.steps.count, id: \.self) { i in
-                Button { go(i) } label: {
-                    VStack(spacing: 8) {
-                        Capsule().fill(i <= step ? T.accent : Color.dyn(0xE6E9F5, 0x272D3E)).frame(height: 5)
-                        Text(Self.steps[i]).font(.on(12, i == step ? .bold : .semibold)).foregroundStyle(i == step ? T.text : T.muted).lineLimit(1)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
+        HStack(spacing: 6) {
+            ForEach(0..<Self.stepCount, id: \.self) { i in
+                Capsule().fill(i <= step ? T.accent : Color.dyn(0xE6E9F5, 0x272D3E)).frame(height: 4)
+                    .padding(.vertical, 8).contentShape(Rectangle())
+                    .onTapGesture { go(i) }
             }
         }
     }
 
-    // Карточка шага (.ed-step): белая, обводка, скругление 24; «Шаг N из 3», заголовок 24/800, пояснение 15.
-    private var stepCard: some View {
-        let head: (String, String) = {
-            switch step {
-            case 0: return ("Фото и видео", "До 10 фото. Первое фото — обложка в поиске.")
-            case 1: return ("Что и сколько", "")
-            default: return ("Проверьте и отправьте", editId == nil ? "Так увидят покупатели · 30 дней бесплатно" : "Так увидят покупатели")
-            }
-        }()
-        return VStack(alignment: .leading, spacing: 0) {
-            Text("ШАГ \(step + 1) ИЗ \(Self.steps.count)").font(.on(12.5, .heavy)).kerning(0.4).foregroundStyle(T.accent)
-            Text(head.0).font(.on(24, .heavy)).foregroundStyle(T.text).padding(.top, 4)
-            if !head.1.isEmpty { Text(head.1).font(.on(15)).foregroundStyle(T.muted).padding(.top, 4) }
-            if let stepError {
-                Label(stepError, systemImage: "exclamationmark.circle").font(.on(14, .semibold)).foregroundStyle(T.danger)
-                    .padding(12).frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(T.dangerSoft))
-                    .padding(.top, 14)
-            }
-            Group {
-                switch step {
-                case 0: photosStep
-                case 1: whatStep
-                default: sendStep
-                }
-            }
-            .padding(.top, 18)
-        }
-        .padding(.horizontal, 16).padding(.vertical, 20)
-        .background(RoundedRectangle(cornerRadius: 24, style: .continuous).fill(T.card))
-        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(T.line, lineWidth: 1))
-    }
-
-    // Шаг 1: большая область «Добавьте фото», миниатюры, советы.
+    // Шаг 1: сетка — крупная обложка 2×2, справа и ниже маленькие ячейки; пустые ячейки тоже открывают галерею.
     private var photosStep: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            if photos.isEmpty {
-                PhotosPicker(selection: $picked, maxSelectionCount: 10, matching: .images) {
-                    VStack(spacing: 12) {
-                        Image(systemName: "camera").font(.system(size: 26, weight: .medium)).foregroundStyle(.white)
-                            .frame(width: 64, height: 64)
-                            .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(T.accentFill).shadow(color: T.accentFill.opacity(0.25), radius: 12, y: 10))
-                        Text("Добавьте фото").font(.on(17, .bold)).foregroundStyle(T.text)
-                        Text("Нажмите, чтобы выбрать · JPG, PNG, HEIC").font(.on(13.5)).foregroundStyle(T.muted).multilineTextAlignment(.center)
-                    }
-                    .frame(maxWidth: .infinity).padding(.vertical, 34).padding(.horizontal, 20)
-                    .background(RoundedRectangle(cornerRadius: 24, style: .continuous).fill(LinearGradient(colors: [Color.dyn(0xFAFAF8, 0x171B27), T.card], startPoint: .top, endPoint: .bottom)))
-                    .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(T.line2, style: StrokeStyle(lineWidth: 1, dash: [5, 4])))
+        let cell = max(0, (gridW - 16) / 3)
+        var rest: [Slot] = photos.dropFirst().map { .photo($0) }
+        if !photos.isEmpty && photos.count < 10 { rest.append(.add) }
+        while rest.count < 5 { rest.append(.empty) }
+        return VStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top, spacing: 8) {
+                    if let first = photos.first { thumb(first, cell * 2 + 8) } else { picker { bigAdd(cell * 2 + 8) } }
+                    VStack(spacing: 8) { slot(rest[0], cell); slot(rest[1], cell) }
                 }
-            } else {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 10)], spacing: 10) {
-                    ForEach(photos) { p in thumb(p) }
-                    if photos.count < 10 {
-                        PhotosPicker(selection: $picked, maxSelectionCount: 10 - photos.count, matching: .images) {
-                            VStack(spacing: 6) {
-                                Image(systemName: "plus").font(.system(size: 22, weight: .semibold))
-                                Text("Ещё").font(.on(13, .semibold))
-                            }
-                            .foregroundStyle(T.accent)
-                            .frame(width: 92, height: 92)
-                            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(T.accentSoft))
-                        }
-                    }
+                LazyVGrid(columns: Array(repeating: GridItem(.fixed(cell), spacing: 8), count: 3), alignment: .leading, spacing: 8) {
+                    ForEach(Array(rest.dropFirst(2).enumerated()), id: \.offset) { _, sl in slot(sl, cell) }
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { gridW = $0 }
+            Text(photos.isEmpty ? "до 10 фото · первое — обложка" : "\(photos.count) из 10 · обложку можно сменить долгим нажатием")
+                .font(.on(13)).foregroundStyle(T.muted).multilineTextAlignment(.center)
             if aiBusy { Label("Заполняем по фото…", systemImage: "sparkles").font(.on(14, .semibold)).foregroundStyle(T.accent) }
-            VStack(alignment: .leading, spacing: 10) {
-                tip("sparkles", "Светлое фото при дневном свете")
-                tip("photo.on.rectangle", "Несколько ракурсов и детали")
-                tip("checkmark", "Только ваш товар, без надписей")
+        }
+    }
+
+    private func picker<L: View>(@ViewBuilder _ label: () -> L) -> some View {
+        PhotosPicker(selection: $picked, maxSelectionCount: max(1, 10 - photos.count), matching: .images, label: label)
+    }
+
+    private func bigAdd(_ size: CGFloat) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: "camera").font(.system(size: 30, weight: .medium))
+            Text("Добавить фото").font(.on(16, .bold))
+        }
+        .foregroundStyle(.white)
+        .frame(width: size, height: size)
+        .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(T.accentFill))
+    }
+
+    @ViewBuilder private func slot(_ sl: Slot, _ size: CGFloat) -> some View {
+        switch sl {
+        case .photo(let p): thumb(p, size)
+        case .add:
+            picker {
+                Image(systemName: "camera").font(.system(size: 22, weight: .medium)).foregroundStyle(.white)
+                    .frame(width: size, height: size)
+                    .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(T.accentFill))
             }
+        case .empty:
+            if photos.count < 10 {
+                picker {
+                    Image(systemName: "plus").font(.system(size: 18, weight: .medium)).foregroundStyle(T.faint)
+                        .frame(width: size, height: size)
+                        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(T.card))
+                        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(T.line2, style: StrokeStyle(lineWidth: 1.5, dash: [5, 4])))
+                }
+            } else { Color.clear.frame(width: size, height: size) }
         }
     }
 
-    private func tip(_ icon: String, _ t: String) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: icon).font(.system(size: 13, weight: .semibold)).foregroundStyle(T.accent).frame(width: 16)
-            Text(t).font(.on(13.5)).foregroundStyle(T.text2)
-        }
-    }
-
-    // Шаг 2: название, категория плитками, раздел, главные характеристики, состояние, цена, условия, город, описание.
+    // Шаг 2: категория (выбрали — сворачивается в строку), название, характеристики, цена, описание, состояние и город.
     private var whatStep: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            field("Название" + (autoTitle ? "" : " *"), help: autoTitle ? "Можно не писать — соберём из характеристик." : "Марка, модель и главное — так объявление легче найти.") {
-                TextField("Например: iPhone 15 Pro, 256 ГБ", text: $title).modifier(InputBox())
+        VStack(alignment: .leading, spacing: 10) {
+            if pickingCat || category.isEmpty || (!subs.isEmpty && sub.isEmpty) { categoryPicker.padding(.bottom, 6) } else { categoryField }
+            box("Название") {
+                TextField(autoTitle ? "Можно не писать — соберём сами" : "Например: iPhone 15 Pro, 256 ГБ", text: $title).font(.on(16, .semibold))
             }
-            field("Категория *") {
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
-                    ForEach(app.config?.categories ?? []) { c in
-                        let on = category == c.id
-                        Button { if category != c.id { category = c.id; sub = ""; attrs = [:] } } label: {
-                            HStack(spacing: 10) {
-                                Image(systemName: CatIcon.of(c.id)).font(.system(size: 17)).foregroundStyle(on ? T.accent : T.text2).frame(width: 24)
-                                Text(c.name).font(.on(14, .semibold)).foregroundStyle(T.text).lineLimit(2).multilineTextAlignment(.leading)
-                                Spacer(minLength: 0)
-                            }
-                            .padding(.horizontal, 12).frame(height: 58)
-                            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(on ? T.accentSoft : T.surface))
-                            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(on ? T.accent : .clear, lineWidth: 1.5))
+            ForEach(fields, id: \.key) { f in fieldRow(f) }
+            box("Цена") {
+                HStack {
+                    TextField("0", text: $price).keyboardType(.numberPad).font(.on(24, .heavy))
+                    Text("₽").font(.on(24, .heavy)).foregroundStyle(T.muted)
+                }
+            }
+            .id("price")
+            let units = app.config?.priceUnits ?? []
+            if units.count > 1 { Seg(items: units.map { ($0, $0.isEmpty ? "за всё" : "за \($0)") }, value: $priceUnit) }
+            box("Описание") {
+                TextField("Состояние, комплектация, особенности", text: $text, axis: .vertical).lineLimit(3...14).font(.on(15))
+            }
+            .id("text")
+            FlowLayout(spacing: 8) {
+                if !category.isEmpty {
+                    Chip(title: "Новое", on: condition == "new") { condition = condition == "new" ? "" : "new" }
+                    Chip(title: "Б/у", on: condition == "used") { condition = condition == "used" ? "" : "used" }
+                }
+                Chip(title: city.isEmpty ? "Город" : city, icon: "mappin", on: !city.isEmpty) { cityPicker = true }
+            }
+            .padding(.top, 4)
+        }
+    }
+
+    private var categoryPicker: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Категория").font(.on(13, .semibold)).foregroundStyle(T.muted)
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
+                ForEach(app.config?.categories ?? []) { c in
+                    let on = category == c.id
+                    Button {
+                        if category != c.id { category = c.id; sub = ""; attrs = [:] }
+                        if subs.isEmpty { pickingCat = false }
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: CatIcon.of(c.id)).font(.system(size: 17)).foregroundStyle(on ? T.accent : T.text2).frame(width: 24)
+                            Text(c.name).font(.on(14, .semibold)).foregroundStyle(T.text).lineLimit(2).multilineTextAlignment(.leading)
+                            Spacer(minLength: 0)
                         }
-                        .buttonStyle(.plain)
+                        .padding(.horizontal, 12).frame(height: 54)
+                        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(on ? T.accentSoft : T.card))
+                        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(on ? T.accent : T.line, lineWidth: on ? 1.5 : 1))
                     }
+                    .buttonStyle(.plain)
                 }
             }
             if !subs.isEmpty {
-                field("Раздел *") {
-                    FlowLayout(spacing: 8) {
-                        ForEach(subs) { sc in Chip(title: sc.name, on: sub == sc.id) { if sub != sc.id { sub = sc.id; attrs = [:] } } }
+                FlowLayout(spacing: 8) {
+                    ForEach(subs) { sc in
+                        Chip(title: sc.name, on: sub == sc.id) { if sub != sc.id { sub = sc.id; attrs = [:] }; pickingCat = false }
                     }
                 }
-            }
-            ForEach(fields, id: \.key) { f in fieldRow(f) }
-            if !category.isEmpty {
-                field("Состояние") {
-                    Seg(items: [("new", "Новое"), ("used", "Б/у"), ("", "Не указывать")], value: $condition)
-                }
-            }
-            field("Цена") {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        TextField("0", text: $price).keyboardType(.numberPad).font(.on(26, .heavy))
-                        Text("₽").font(.on(26, .heavy)).foregroundStyle(T.muted)
-                    }
-                    .padding(.horizontal, 18).frame(height: 64)
-                    .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(T.card))
-                    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(T.line, lineWidth: 1))
-                    let units = app.config?.priceUnits ?? []
-                    if units.count > 1 { Seg(items: units.map { ($0, $0.isEmpty ? "за всё" : "за \($0)") }, value: $priceUnit) }
-                }
-            }
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
-                opt("bubble.left.and.bubble.right", "Торг", "Покупатели смогут предложить свою цену", $bargain)
-                opt("arrow.triangle.2.circlepath", "Обмен", "Покажем «Обмен» в объявлении и фильтрах", $exchange)
-                opt("truck.box", "Доставка", "Отправлю по России", $delivery)
-            }
-            field("Город *") {
-                Button { cityPicker = true } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: "mappin").foregroundStyle(T.muted)
-                        Text(city.isEmpty ? "Выберите город" : city).font(.on(16)).foregroundStyle(city.isEmpty ? T.faint : T.text)
-                        Spacer()
-                        Image(systemName: "chevron.down").font(.system(size: 13, weight: .semibold)).foregroundStyle(T.muted)
-                    }
-                    .modifier(InputBox())
-                }
-                .buttonStyle(.plain)
-            }
-            field("Описание — по желанию") {
-                TextField("Состояние, комплектация, причина продажи, особенности", text: $text, axis: .vertical)
-                    .lineLimit(5...14)
-                    .modifier(InputBox(multiline: true))
+                .padding(.top, 4)
             }
         }
     }
 
-    // Шаг 3: как увидят в поиске, правила, отправка.
+    private var categoryField: some View {
+        Button { pickingCat = true } label: {
+            box("Категория") {
+                HStack(spacing: 8) {
+                    Image(systemName: CatIcon.of(category)).font(.system(size: 15)).foregroundStyle(T.accent)
+                    Text([app.config?.category(category)?.name, subs.first { $0.id == sub }?.name].compactMap { $0 }.joined(separator: " · "))
+                        .font(.on(16, .semibold)).foregroundStyle(T.text).lineLimit(1)
+                    Spacer(minLength: 6)
+                    Text("Изменить").font(.on(14, .semibold)).foregroundStyle(T.accent)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Поле шага 2: белая плашка, подпись мелко сверху, ввод под ней.
+    private func box<C: View>(_ label: String, @ViewBuilder _ content: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(label).font(.on(12, .medium)).foregroundStyle(T.muted)
+            content()
+        }
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(T.card))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(T.line, lineWidth: 1))
+    }
+
+    // Шаг 3: страница объявления как у покупателя (ListingView в режиме превью), условия, отправка.
     private var sendStep: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            ListingCardView(item: preview).frame(maxWidth: 200).allowsHitTesting(false)
-            VStack(alignment: .leading, spacing: 8) {
-                check(!photos.isEmpty, "Фото", photos.isEmpty ? "без фото откликов меньше" : "\(photos.count) шт.")
-                check(!category.isEmpty && (subs.isEmpty || !sub.isEmpty), "Раздел", [app.config?.category(category)?.name, subs.first { $0.id == sub }?.name].compactMap { $0 }.joined(separator: " › "))
-                check(!price.filter(\.isNumber).isEmpty, "Цена", price.filter(\.isNumber).isEmpty ? "договорная" : Fmt.price(Int(price.filter(\.isNumber)), unit: priceUnit))
-                check(!city.isEmpty, "Город", city)
-                check(!text.isEmpty, "Описание", text.isEmpty ? "по желанию" : "есть")
+        VStack(spacing: 16) {
+            Text("так увидят покупатели").font(.on(13)).foregroundStyle(T.muted)
+            ListingView(id: editId ?? 0, draft: .init(data: draftData, images: photos.map(\.image), edit: edit))
+            VStack(spacing: 0) {
+                toggleRow("Торг", "tag", $bargain)
+                toggleRow("Обмен", "arrow.left.arrow.right", $exchange)
+                toggleRow("Доставка", "truck.box", $delivery, last: true)
             }
-            Text("Отправляя, вы принимаете правила размещения.").font(.on(13.5)).foregroundStyle(T.muted)
-            Button { nav.push(.doc("rules")) } label: { Text("Правила размещения").font(.on(14, .semibold)).foregroundStyle(T.accent).underline() }.buttonStyle(.plain)
+            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(T.card))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(T.line, lineWidth: 1))
+            Button { nav.push(.doc("rules")) } label: {
+                (Text("Проверка модератором — обычно пара часов. Публикуя, вы принимаете ") + Text("правила").foregroundColor(T.accent))
+                    .font(.on(12.5)).foregroundStyle(T.muted).multilineTextAlignment(.center)
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 10)
         }
     }
 
-    private func check(_ ok: Bool, _ t: String, _ v: String) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: ok ? "checkmark.circle.fill" : "circle.dashed").foregroundStyle(ok ? T.good : T.faint)
-            Text(t).font(.on(14, .semibold)).foregroundStyle(T.text)
-            Spacer()
-            Text(v).font(.on(14)).foregroundStyle(T.muted).lineLimit(1)
+    private func toggleRow(_ t: String, _ icon: String, _ on: Binding<Bool>, last: Bool = false) -> some View {
+        Toggle(isOn: on) {
+            Label(t, systemImage: icon).font(.on(15, .medium)).foregroundStyle(T.text)
+        }
+        .tint(T.accentFill)
+        .padding(.horizontal, 14).frame(height: 50)
+        .overlay(alignment: .bottom) { if !last { T.line.frame(height: 1).padding(.leading, 14) } }
+    }
+
+    /// Черновик в виде ответа сервера — его рисует ListingView; продавец — вы сами.
+    private var draftData: ListingResponse {
+        let subName = subs.first { $0.id == sub }?.name
+        let specs = fields.compactMap { f -> Spec? in
+            guard let v = attrs[f.key], !v.isEmpty else { return nil }
+            return Spec(label: f.label, value: [v, f.type == "number" ? f.unit : nil].compactMap { $0 }.joined(separator: " "))
+        }
+        let l = Listing(id: editId ?? 0, title: title.isEmpty ? (subName ?? "Ваше объявление") : title, description: text, category: category, subcategory: sub,
+                        price: Int(price.filter(\.isNumber)), priceUnit: priceUnit, priceWas: nil, city: city, metro: nil, district: nil, condition: condition,
+                        delivery: delivery, bargain: bargain, exchange: exchange, status: nil, views: nil, favCount: nil,
+                        createdAt: Date().timeIntervalSince1970 * 1000, updatedAt: nil, photos: photos.map { $0.url?.absoluteString ?? "" },
+                        isFav: nil, isOwner: true, specs: specs, rejectReason: nil, attrs: nil)
+        let seller = app.me.map { Seller(id: $0.id, name: $0.name, city: $0.city, avatar: $0.avatar, createdAt: $0.createdAt, activeCount: nil,
+                                         rep: $0.rep, badges: $0.badges, followers: nil, following: nil) }
+        return ListingResponse(listing: l, seller: seller, similar: nil)
+    }
+
+    /// «Изменить» в превью: фото — шаг 1, цена и описание — шаг 2 сразу у нужного поля.
+    private func edit(_ f: ListingView.Field) {
+        switch f {
+        case .photos: go(0)
+        case .price: jump = "price"; go(1)
+        case .text: jump = "text"; go(1)
         }
     }
 
-    private var preview: ListingCard {
-        ListingCard(id: 0, title: title.isEmpty ? (subs.first { $0.id == sub }?.name ?? "Ваше объявление") : title,
-                    price: Int(price.filter(\.isNumber)), priceUnit: priceUnit, priceWas: nil, city: city, metro: nil, category: category, subcategory: sub,
-                    summary: nil, photo: nil, createdAt: Date().timeIntervalSince1970 * 1000, isFav: false, goodPrice: nil, delivery: delivery,
-                    hasVideo: nil, status: nil, boost: nil, seller: nil)
-    }
-
-    // Нижняя панель (.ed-dock): «‹» и «Далее» (тёмная) / «Отправить на проверку» (синяя).
+    // Нижняя панель: «Далее» (тёмная) / «Опубликовать» (синяя). Назад — стрелкой в шапке.
     private var dock: some View {
-        HStack(spacing: 8) {
-            if step > 0 {
-                Button { go(step - 1) } label: { RoundIcon(icon: "chevron.left", size: 48) }.buttonStyle(.plain).accessibilityLabel("Назад")
-            }
-            if step < Self.steps.count - 1 {
-                Button("Далее") { go(step + 1) }.buttonStyle(TButton(kind: .dark, height: 48))
+        Group {
+            if step < Self.stepCount - 1 {
+                Button("Далее") { go(step + 1) }.buttonStyle(TButton(kind: .dark, height: 50))
             } else {
                 Button { Task { await submit() } } label: {
-                    if busy { ProgressView().tint(.white) } else { Text(editId == nil ? "Отправить на проверку" : "Сохранить") }
+                    if busy { ProgressView().tint(.white) } else { Text(editId == nil ? "Опубликовать" : "Сохранить") }
                 }
-                .buttonStyle(TButton(kind: .accent, height: 48))
+                .buttonStyle(TButton(kind: .accent, height: 50))
                 .disabled(busy || photos.contains { $0.file == nil && !$0.failed })
             }
         }
         .padding(8)
-        .background(RoundedRectangle(cornerRadius: 26, style: .continuous).fill(T.card.opacity(0.96)).shadow(color: Color(hex: 0x101010).opacity(0.14), radius: 18, y: 12))
-        .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).strokeBorder(T.line, lineWidth: 1))
+        .background(RoundedRectangle(cornerRadius: 28, style: .continuous).fill(T.card.opacity(0.96)).shadow(color: Color(hex: 0x101010).opacity(0.14), radius: 18, y: 12))
+        .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).strokeBorder(T.line, lineWidth: 1))
         .padding(.horizontal, 12).padding(.bottom, 4)
     }
 
@@ -322,7 +356,7 @@ struct EditorView: View {
     private func go(_ to: Int) {
         if to > step, let e = problem(upTo: to) { stepError = e; Haptics.play("error"); return }
         stepError = nil
-        withAnimation(.easeOut(duration: 0.2)) { step = max(0, min(Self.steps.count - 1, to)) }
+        withAnimation(.easeOut(duration: 0.2)) { step = max(0, min(Self.stepCount - 1, to)) }
     }
 
     private func problem(upTo to: Int) -> String? {
@@ -336,93 +370,65 @@ struct EditorView: View {
         return nil
     }
 
-    private func field<C: View>(_ label: String, help: String? = nil, @ViewBuilder _ content: () -> C) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(label).font(.on(14, .semibold)).foregroundStyle(T.text)
-            content()
-            if let help { Text(help).font(.on(13)).foregroundStyle(T.muted) }
-        }
-    }
-
-    private func opt(_ icon: String, _ title: String, _ sub: String, _ on: Binding<Bool>) -> some View {
-        Button { on.wrappedValue.toggle(); Haptics.play("selection") } label: {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Image(systemName: icon).font(.system(size: 17)).foregroundStyle(T.accent)
-                    Spacer()
-                    Image(systemName: on.wrappedValue ? "checkmark.square.fill" : "square").font(.system(size: 20)).foregroundStyle(on.wrappedValue ? T.accentFill : T.faint)
-                }
-                Text(title).font(.on(15, .bold)).foregroundStyle(T.text)
-                Text(sub).font(.on(12.5)).foregroundStyle(T.muted).fixedSize(horizontal: false, vertical: true).multilineTextAlignment(.leading)
-                Spacer(minLength: 0)
-            }
-            .padding(12)
-            .frame(maxWidth: .infinity, minHeight: 124, alignment: .topLeading)
-            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(on.wrappedValue ? T.accentSoft : T.card))
-            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(on.wrappedValue ? T.accent : T.line, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
-    }
-
     private var autoTitle: Bool { ["cars", "moto", "phones", "flats", "flats_rent", "daily", "rooms", "houses", "land", "garages", "commercial"].contains(sub) }
 
     @ViewBuilder private func fieldRow(_ f: FieldDef) -> some View {
         let binding = Binding(get: { attrs[f.key] ?? "" }, set: { attrs[f.key] = $0 })
-        let label = f.label + (f.req == true ? " *" : "")
         switch f.type {
         case "select":
-            field(label) {
-                Menu {
-                    Picker(label, selection: binding) {
-                        Text("Не указывать").tag("")
-                        ForEach(f.options ?? [], id: \.self) { Text($0).tag($0) }
-                    }
-                } label: {
+            Menu {
+                Picker(f.label, selection: binding) {
+                    Text("Не указывать").tag("")
+                    ForEach(f.options ?? [], id: \.self) { Text($0).tag($0) }
+                }
+            } label: {
+                box(f.label) {
                     HStack {
-                        Text(binding.wrappedValue.isEmpty ? "Выберите" : binding.wrappedValue).font(.on(16)).foregroundStyle(binding.wrappedValue.isEmpty ? T.faint : T.text)
+                        Text(binding.wrappedValue.isEmpty ? "Выберите" : binding.wrappedValue).font(.on(16, .semibold)).foregroundStyle(binding.wrappedValue.isEmpty ? T.faint : T.text)
                         Spacer()
                         Image(systemName: "chevron.up.chevron.down").font(.system(size: 12, weight: .semibold)).foregroundStyle(T.muted)
                     }
-                    .modifier(InputBox())
                 }
             }
         case "number":
-            field(label) {
+            box(f.label) {
                 HStack {
-                    TextField(f.placeholder ?? "", text: binding).keyboardType(f.step != nil ? .decimalPad : .numberPad)
+                    TextField(f.placeholder ?? "", text: binding).keyboardType(f.step != nil ? .decimalPad : .numberPad).font(.on(16, .semibold))
                     if let u = f.unit { Text(u).foregroundStyle(T.muted) }
                 }
-                .modifier(InputBox())
             }
         default:
-            field(label) { TextField(f.placeholder ?? "", text: binding).modifier(InputBox()) }
+            box(f.label) { TextField(f.placeholder ?? "", text: binding).font(.on(16, .semibold)) }
         }
     }
 
-    private func thumb(_ p: EditorPhoto) -> some View {
-        ZStack(alignment: .topTrailing) {
+    private func thumb(_ p: EditorPhoto, _ size: CGFloat) -> some View {
+        let shape = RoundedRectangle(cornerRadius: size > 150 ? 22 : 16, style: .continuous)
+        return ZStack(alignment: .topTrailing) {
             Group {
                 if let img = p.image { Image(uiImage: img).resizable().scaledToFill() } else { RemoteImage(url: p.url) }
             }
-            .frame(width: 92, height: 92)
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .frame(width: size, height: size)
+            .clipShape(shape)
             .overlay {
-                if p.file == nil && !p.failed { ProgressView().tint(.white).frame(width: 92, height: 92).background(.black.opacity(0.3)).clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous)) }
-                if p.failed { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.white).frame(width: 92, height: 92).background(T.danger.opacity(0.6)).clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous)) }
+                if p.file == nil && !p.failed { ProgressView().tint(.white).frame(width: size, height: size).background(.black.opacity(0.3)).clipShape(shape) }
+                if p.failed { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.white).frame(width: size, height: size).background(T.danger.opacity(0.6)).clipShape(shape) }
             }
             .overlay(alignment: .bottomLeading) {
-                if photos.first?.id == p.id { Text("Обложка").font(.on(11, .bold)).foregroundStyle(.white).padding(.horizontal, 7).frame(height: 20).background(Capsule().fill(.black.opacity(0.55))).padding(6) }
+                if photos.first?.id == p.id { Text("Обложка").font(.on(11, .bold)).foregroundStyle(.white).padding(.horizontal, 8).frame(height: 22).background(Capsule().fill(.black.opacity(0.55))).padding(8) }
             }
+            .contentShape(.contextMenuPreview, shape)
             .contextMenu {
                 if photos.first?.id != p.id { Button { makeCover(p) } label: { Label("Сделать обложкой", systemImage: "star") } }
                 Button(role: .destructive) { photos.removeAll { $0.id == p.id } } label: { Label("Удалить", systemImage: "trash") }
             }
             Button { photos.removeAll { $0.id == p.id } } label: {
-                Image(systemName: "xmark").font(.system(size: 11, weight: .bold)).foregroundStyle(.white)
-                    .frame(width: 24, height: 24).background(Circle().fill(.black.opacity(0.6)))
+                Image(systemName: "xmark").font(.system(size: 10, weight: .bold)).foregroundStyle(.white)
+                    .frame(width: 22, height: 22).background(Circle().fill(.black.opacity(0.6)))
             }
             .buttonStyle(.plain)
             .padding(5)
+            .accessibilityLabel("Удалить фото")
         }
     }
 
@@ -550,6 +556,18 @@ struct EditorView: View {
             Haptics.play("error")
         }
     }
+
+    #if DEBUG
+    /// Снимки экрана: «-step 1/2» — открыть шаг с примером объявления.
+    private func demoStep() {
+        let n = UserDefaults.standard.integer(forKey: "step")
+        guard n > 0, step == 0, let c = app.config?.categories.first else { return }
+        category = c.id; sub = app.config?.subs(c.id).first?.id ?? ""
+        title = "iPhone 15 Pro 256 ГБ"; price = "89990"; condition = "used"; city = city.isEmpty ? "Москва" : city
+        text = "Телефон в идеальном состоянии, носил в чехле и со стеклом с первого дня. Аккумулятор 98%. Полный комплект: коробка, кабель, чек."
+        step = min(n, Self.stepCount - 1)
+    }
+    #endif
 
     private func reset() {
         photos = []; category = ""; sub = ""; attrs = [:]; title = ""; text = ""; price = ""; priceUnit = ""; condition = ""

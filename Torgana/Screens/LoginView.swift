@@ -164,7 +164,7 @@ struct LoginView: View {
     /// Вошли: куки — страницам сайта, профиль — родным экранам.
     private func done() async {
         Haptics.play("success")
-        await withCheckedContinuation { c in CookieSync.shared.pushToWeb { c.resume() } }
+        await withCheckedContinuation { c in CookieSync.shared.adoptNative { c.resume() } }
         await app.refreshMe()
     }
 }

@@ -49,7 +49,13 @@ final class AppState: ObservableObject {
     }
 
     func refreshMe() async {
-        guard let r: MeResponse = try? await API.shared.get("/api/me") else { return }
+        guard let r: MeResponse = try? await API.shared.get("/api/me") else { return }   // нет сети — профиль не трогаем
+        if r.user == nil && CookieSync.shared.hasSession {
+            // Сервер не узнал сессию (вышли на сайте, удалили профиль, истёк срок) — только тогда она стирается.
+            await withCheckedContinuation { c in CookieSync.shared.drop { c.resume() } }
+        } else {
+            CookieSync.shared.remember()
+        }
         let changed = me?.id != r.user?.id
         me = r.user
         if changed { Task { await PushManager.shared.sync(); await PushManager.shared.askOnce() } }
@@ -115,9 +121,8 @@ final class AppState: ObservableObject {
     func logout() async {
         await PushManager.shared.forget()
         _ = try? await API.shared.post("/api/auth/logout")
-        for c in HTTPCookieStorage.shared.cookies ?? [] where c.name == "tg_sid" { HTTPCookieStorage.shared.deleteCookie(c) }
         favs = [:]
-        await withCheckedContinuation { c in CookieSync.shared.pushToWeb { c.resume() } }
+        await withCheckedContinuation { c in CookieSync.shared.drop { c.resume() } }
         await refreshMe()
     }
 

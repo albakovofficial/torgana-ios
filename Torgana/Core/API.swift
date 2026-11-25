@@ -1,5 +1,6 @@
 import Foundation
 import WebKit
+import Security
 
 // Связь с сервером torgana.ru — те же /api/…, что у сайта. Вход — та же кука сессии (tg_sid), что у сайта внутри приложения:
 // куки WKWebView и URLSession синхронизируются (CookieSync), поэтому вошли в одном месте — вошли везде.
@@ -143,51 +144,103 @@ enum JSONValue: Codable, Hashable {
     var string: String? { if case .string(let s) = self { return s } else { return nil } }
 }
 
-// Куки сессии: WKWebView (сайт внутри приложения) ⇄ URLSession (родные экраны).
+// Сессия (кука tg_sid): WKWebView (страницы сайта) ⇄ URLSession (родные экраны) ⇄ Связка ключей.
+// Выход решает только сервер: /api/me ответил «никто не вошёл» при нашей куке — или вы сами нажали «Выйти».
+// Пустое хранилище кук WKWebView ничего не значит: при холодном запуске оно бывает пустым, пока WebKit не прочитал
+// диск, — раньше это принималось за выход, и через пару часов (iOS выгрузила приложение) приходилось входить заново.
 final class CookieSync: NSObject, WKHTTPCookieStoreObserver {
     static let shared = CookieSync()
     private var store: WKHTTPCookieStore { WKWebsiteDataStore.default().httpCookieStore }
     private var lastSid: String?
     var onChange: (() -> Void)?
 
-    func start() {
-        store.add(self)
-        pullFromWeb()
-    }
-
+    private let name = "tg_sid"
     private var host: String { Router.shared.baseURL.host ?? "torgana.ru" }
     private func ours(_ c: HTTPCookie) -> Bool { c.domain.hasSuffix(host) || host.hasSuffix(c.domain.trimmingCharacters(in: CharacterSet(charactersIn: "."))) }
+    private var sid: HTTPCookie? { (HTTPCookieStorage.shared.cookies ?? []).first { $0.name == name && ours($0) } }
+    var hasSession: Bool { sid != nil }
 
-    /// Сайт вошёл или вышел — переносим куки в URLSession.
+    private var adopting = false   // пока отдаём сессию страницам сайта, их старую куку не забираем
+
+    /// Запуск: сессия из Связки ключей — родным экранам и страницам сайта, до первого запроса.
+    func start() {
+        if sid == nil, let saved = SessionVault.load(host: host) { HTTPCookieStorage.shared.setCookie(saved) }
+        store.add(self)
+        if sid != nil { adoptNative { self.pullFromWeb() } } else { pullFromWeb() }
+    }
+
+    /// Страница сайта вошла (или вошла другим профилем) — забираем её сессию. Нет куки у сайта — спрашиваем сервер.
     func pullFromWeb() {
         store.getAllCookies { cookies in
-            let mine = cookies.filter(self.ours)
-            let shared = HTTPCookieStorage.shared
-            for c in shared.cookies ?? [] where self.ours(c) && !mine.contains(where: { $0.name == c.name }) { shared.deleteCookie(c) }
-            for c in mine { shared.setCookie(c) }
-            let sid = mine.first { $0.name == "tg_sid" }?.value
-            if sid != self.lastSid {
-                self.lastSid = sid
-                DispatchQueue.main.async { self.onChange?() }
+            DispatchQueue.main.async {
+                guard !self.adopting else { return }
+                guard let web = cookies.first(where: { $0.name == self.name && self.ours($0) && !$0.value.isEmpty }) else {
+                    if self.lastSid != nil { self.onChange?() }   // вышли на странице сайта? проверит /api/me
+                    return
+                }
+                guard web.value != self.lastSid else { return }
+                HTTPCookieStorage.shared.setCookie(web)
+                SessionVault.save(web)
+                self.lastSid = web.value
+                self.onChange?()
             }
         }
     }
 
-    /// Родной экран вошёл или вышел — переносим куки в WKWebView.
-    func pushToWeb(completion: (() -> Void)? = nil) {
-        let mine = (HTTPCookieStorage.shared.cookies ?? []).filter(ours)
+    /// Вошли в родном экране: сессия (её поставил ответ сервера) — в Связку ключей и страницам сайта.
+    func adoptNative(completion: (() -> Void)? = nil) {
+        guard let c = sid else { completion?(); return }
+        SessionVault.save(c)
+        lastSid = c.value
+        adopting = true
+        store.setCookie(c) { DispatchQueue.main.async { self.adopting = false; completion?() } }
+    }
+
+    /// Ответ сервера продлил сессию (1.59.3: Set-Cookie на /api/me) — запомнить новый срок.
+    func remember() { if let c = sid, c.value == lastSid { SessionVault.save(c) } }
+
+    /// Выход: «Выйти», удаление профиля или сервер не узнал сессию.
+    func drop(completion: (() -> Void)? = nil) {
+        for c in HTTPCookieStorage.shared.cookies ?? [] where c.name == name && ours(c) { HTTPCookieStorage.shared.deleteCookie(c) }
+        SessionVault.clear()
+        lastSid = nil
         store.getAllCookies { web in
             let group = DispatchGroup()
-            for c in web where self.ours(c) && !mine.contains(where: { $0.name == c.name }) { group.enter(); self.store.delete(c) { group.leave() } }
-            for c in mine { group.enter(); self.store.setCookie(c) { group.leave() } }
-            group.notify(queue: .main) {
-                self.lastSid = mine.first { $0.name == "tg_sid" }?.value
-                completion?()
-            }
+            for c in web where c.name == self.name && self.ours(c) { group.enter(); self.store.delete(c) { group.leave() } }
+            group.notify(queue: .main) { completion?() }
         }
     }
 
-    var hasSession: Bool { (HTTPCookieStorage.shared.cookies ?? []).contains { $0.name == "tg_sid" && ours($0) } }
-
     func cookiesDidChange(in cookieStore: WKHTTPCookieStore) { pullFromWeb() }
+}
+
+/// Сессия в Связке ключей: переживает выгрузку приложения и не зависит от того, успели ли куки записаться на диск.
+enum SessionVault {
+    private static let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
+                                               kSecAttrService as String: "ru.torgana.session",
+                                               kSecAttrAccount as String: "tg_sid"]
+
+    static func save(_ c: HTTPCookie) {
+        let exp = c.expiresDate?.timeIntervalSince1970 ?? Date().addingTimeInterval(30 * 86400).timeIntervalSince1970
+        guard let data = try? JSONEncoder().encode(["v": c.value, "exp": String(exp)]) else { return }
+        SecItemDelete(query as CFDictionary)
+        var add = query
+        add[kSecValueData as String] = data
+        add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        SecItemAdd(add as CFDictionary, nil)
+    }
+
+    static func load(host: String) -> HTTPCookie? {
+        var q = query
+        q[kSecReturnData as String] = true
+        q[kSecMatchLimit as String] = kSecMatchLimitOne
+        var out: CFTypeRef?
+        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let data = out as? Data,
+              let d = try? JSONDecoder().decode([String: String].self, from: data),
+              let v = d["v"], let exp = Double(d["exp"] ?? ""), exp > Date().timeIntervalSince1970 else { return nil }
+        return HTTPCookie(properties: [.name: "tg_sid", .value: v, .domain: host, .path: "/", .secure: "TRUE",
+                                       .expires: Date(timeIntervalSince1970: exp), HTTPCookiePropertyKey("HttpOnly"): "TRUE"])
+    }
+
+    static func clear() { SecItemDelete(query as CFDictionary) }
 }

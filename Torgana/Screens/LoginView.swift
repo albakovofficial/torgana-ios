@@ -468,6 +468,7 @@ struct AuthButtons: View {
 
 struct LoginSheet: View {
     let ask: AppState.LoginAsk
+    @State private var height: CGFloat = 440
     @EnvironmentObject private var app: AppState
     @Environment(\.dismiss) private var dismiss
 
@@ -498,11 +499,12 @@ struct LoginSheet: View {
                 .buttonStyle(.plain)
                 .padding(.top, 2)
             }
-            .padding(18)
-            Spacer(minLength: 0)
+            .padding(18).padding(.bottom, 8)
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }   // шторка — ровно по содержимому
+        .frame(maxHeight: .infinity, alignment: .top)
         .background(T.card)
-        .presentationDetents([.height(500)])
+        .presentationDetents([.height(max(height, 300))])
         .presentationDragIndicator(.visible)
         .presentationCornerRadius(34)
         .onChange(of: app.me?.id) { _, id in if id != nil { dismiss() } }

@@ -368,8 +368,7 @@ struct MyListingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                BackLink(title: "Профиль")
-                PageTitle(text: "Мои объявления", size: 30).padding(.top, 4)
+                PageHeader(title: "Мои объявления", route: .myListings)
                 MyListingsSection(store: store).padding(.top, 18)
             }
             .padding(.horizontal, 20)
@@ -391,8 +390,7 @@ struct NoticesView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                BackLink()
-                PageTitle(text: "Уведомления", size: 30).padding(.top, 4)
+                PageHeader(title: "Уведомления", route: .notices)
                 PushCard().padding(.top, 18)
                 if loading && items.isEmpty {
                     LoadingView()

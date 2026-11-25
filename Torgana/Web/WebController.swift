@@ -48,7 +48,7 @@ final class WebController: NSObject {
     // embedded: страница внутри родного приложения — шапку, подвал и нижнее меню сайта прячем (есть свои),
     // а ссылки на уже родные экраны (объявление, поиск, главная, избранное) открываем в приложении.
     private static func bootScript(embedded: Bool) -> String {
-        let app = "window.TorganaApp = { platform: 'ios', version: '" + appVersion + "', native: " + (embedded ? "true" : "false") + ", push: 'app', "
+        let app = "window.TorganaApp = { platform: 'ios', version: '" + appVersion + "', native: " + (embedded ? "true" : "false") + ", "
             + "post: function (msg) { try { window.webkit.messageHandlers.torgana.postMessage(msg); } catch (e) {} } };"
         let classes = embedded ? "'in-app', 'in-app-ios', 'in-app-native'" : "'in-app', 'in-app-ios'"
         // Свои «‹ Назад» у разделов сайта прячем — у экрана есть родная (она же листает историю страницы назад).
@@ -265,6 +265,12 @@ struct WebScreen: View {
         _page = StateObject(wrappedValue: WebPage(path: path))
     }
 
+    /// Название страницы в пути: заголовок документа без « — Торгана», пока грузится — из списка разделов.
+    private var pageTitle: String {
+        let t = page.title.components(separatedBy: " — ").first?.components(separatedBy: " · ").first ?? ""
+        return t.isEmpty || t == "Торгана" ? Route.web(path).crumb : t
+    }
+
     var body: some View {
         if closeOnLogin {
             // Вход через Яндекс/VK — в окне поверх экрана входа.
@@ -276,7 +282,8 @@ struct WebScreen: View {
         } else {
             // Раздел сайта внутри приложения: шапка и нижнее меню — родные, как на остальных экранах.
             VStack(alignment: .leading, spacing: 0) {
-                BackLink { if page.web.canGoBack { page.web.goBack() } else { dismiss() } }.padding(.horizontal, 20)
+                PageHeader(route: .web(path), current: pageTitle) { if page.web.canGoBack { page.web.goBack() } else { dismiss() } }
+                    .padding(.horizontal, 20).padding(.bottom, 6)
                 WebPageView(page: page)
             }
             .sitePage()

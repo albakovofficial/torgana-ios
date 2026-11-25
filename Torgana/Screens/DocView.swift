@@ -10,13 +10,14 @@ struct DocView: View {
     @State private var error: String?
 
     private struct Page: Decodable { let title: String; let html: String }
+    static let titles = ["rules": "Правила", "terms": "Соглашение", "privacy": "Политика конфиденциальности",
+                         "consent": "Согласие на обработку данных", "contacts": "Контакты и реквизиты"]
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                BackLink()
+                PageHeader(title: title.isEmpty ? (DocView.titles[slug] ?? "Документ") : title, route: .doc(slug))
                 if let text {
-                    PageTitle(text: title, size: 32).padding(.top, 8)
                     Text(text).font(.on(17)).foregroundStyle(T.text).tint(T.accent).lineSpacing(7).textSelection(.enabled).padding(.top, 20)
                 } else if let error {
                     EmptyState(title: "Не открылось", text: error).padding(.top, 8)

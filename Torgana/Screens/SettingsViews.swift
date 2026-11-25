@@ -17,6 +17,16 @@ enum SettingsSection: String, Hashable {
         default: return nil
         }
     }
+
+    var title: String {
+        switch self {
+        case .profile: return "Профиль"
+        case .notify: return "Уведомления"
+        case .look: return "Оформление"
+        case .blocks: return "Чёрный список"
+        case .account: return "Аккаунт"
+        }
+    }
 }
 
 struct SettingsScreen: View {
@@ -25,8 +35,7 @@ struct SettingsScreen: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                BackLink(title: "Профиль")
-                PageTitle(text: title, size: 30).padding(.top, 4).padding(.bottom, 18)
+                PageHeader(title: section.title, route: .settings(section), group: "Настройки").padding(.bottom, 18)
                 switch section {
                 case .profile: ProfileEditForm()
                 case .notify: NotifySettings()
@@ -40,16 +49,6 @@ struct SettingsScreen: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .sitePage()
-    }
-
-    private var title: String {
-        switch section {
-        case .profile: return "Профиль"
-        case .notify: return "Уведомления"
-        case .look: return "Оформление"
-        case .blocks: return "Чёрный список"
-        case .account: return "Аккаунт"
-        }
     }
 }
 

@@ -37,61 +37,102 @@ enum Route: Hashable {
     }
 }
 
-enum Tab: Int, CaseIterable { case home, favorites, post, messages, profile }
+enum Tab: Int, CaseIterable {
+    case home, favorites, post, messages, profile
+
+    var title: String {
+        switch self {
+        case .home: return "Главная"
+        case .favorites: return "Избранное"
+        case .post: return "Новое объявление"
+        case .messages: return "Сообщения"
+        case .profile: return "Профиль"
+        }
+    }
+}
+
+extension Route {
+    /// Название экрана в «хлебных крошках».
+    var crumb: String {
+        switch self {
+        case .listing: return "Объявление"
+        case .search(let q): return q.q.isEmpty ? "Поиск" : "«\(q.q)»"
+        case .chat: return "Чат"
+        case .support: return "Поддержка"
+        case .myListings: return "Мои объявления"
+        case .notices: return "Уведомления"
+        case .edit: return "Редактирование"
+        case .user: return "Продавец"
+        case .doc(let slug): return DocView.titles[slug] ?? "Документ"
+        case .settings(let s): return s.title
+        case .web(let path): return Route.webTitles.first { path.hasPrefix($0.0) }?.1 ?? "Страница"
+        }
+    }
+
+    static let webTitles: [(String, String)] = [
+        ("/profile/reputation", "Сделки и отзывы"), ("/profile/following", "Подписки"), ("/profile/stats", "Статистика"),
+        ("/profile/settings#sp", "Пароль и вход"), ("/profile/settings#s-biz", "Для бизнеса"), ("/profile/settings", "Настройки"),
+        ("/admin", "Модерация"), ("/page/help", "Помощь и безопасность"), ("/page/safety", "Безопасность"), ("/forgot", "Восстановление пароля")
+    ]
+}
 
 // Навигация: выбранная вкладка и стопка экранов в каждой.
 @MainActor
 final class Nav: ObservableObject {
     static let shared = Nav()
     @Published var tab: Tab = .home
-    @Published var paths: [Tab: NavigationPath] = [:]
+    @Published var paths: [Tab: [Route]] = [:]   // стопка экранов — по ней же строятся «хлебные крошки»
     /// Экраны со своей нижней панелью (объявление) прячут нижнее меню.
     @Published var barHidden = 0
     /// Подача объявления во вкладке «+»: внизу своя панель «Назад / Далее».
     @Published var editorDock = false
     var barVisible: Bool { barHidden <= 0 && !(tab == .post && editorDock) }
 
-    func path(_ tab: Tab) -> Binding<NavigationPath> {
-        Binding(get: { self.paths[tab] ?? NavigationPath() }, set: { self.paths[tab] = $0 })
+    func path(_ tab: Tab) -> Binding<[Route]> {
+        Binding(get: { self.paths[tab] ?? [] }, set: { self.paths[tab] = $0 })
     }
 
-    func push(_ route: Route) {
-        var p = paths[tab] ?? NavigationPath()
-        p.append(route)
-        paths[tab] = p
+    func push(_ route: Route) { paths[tab, default: []].append(route) }
+
+    /// «Хлебные крошки» экрана: вкладка и экраны под ним; нажатие — вернуться на тот уровень.
+    func crumbs(for route: Route?) -> [(title: String, go: () -> Void)] {
+        let t = tab
+        let stack = paths[t] ?? []
+        let depth = route.flatMap { stack.lastIndex(of: $0) } ?? stack.count
+        var out: [(String, () -> Void)] = [(t.title, { self.paths[t] = [] })]
+        for i in 0..<depth { let r = stack[i]; out.append((r.crumb, { self.paths[t] = Array(stack.prefix(i + 1)) })) }
+        return out
     }
 
     /// Открыть адрес сайта: родной экран, если он есть, иначе — страницу сайта.
     func open(path: String) {
         let clean = path.hasPrefix("/") ? path : "/" + path
         switch clean.split(separator: "?").first.map(String.init) ?? clean {
-        case "/": tab = .home; paths[.home] = NavigationPath(); return
-        case "/favorites": tab = .favorites; paths[.favorites] = NavigationPath(); return
-        case "/new": tab = .post; paths[.post] = NavigationPath(); return
-        case "/profile": tab = .profile; paths[.profile] = NavigationPath(); return
-        case "/profile/listings": tab = .profile; paths[.profile] = NavigationPath([Route.myListings]); return
-        case "/profile/settings": tab = .profile; paths[.profile] = NavigationPath(); return   // настройки — в профиле
+        case "/": tab = .home; paths[.home] = []; return
+        case "/favorites": tab = .favorites; paths[.favorites] = []; return
+        case "/new": tab = .post; paths[.post] = []; return
+        case "/profile": tab = .profile; paths[.profile] = []; return
+        case "/profile/listings": tab = .profile; paths[.profile] = [Route.myListings]; return
+        case "/profile/settings": tab = .profile; paths[.profile] = []; return   // настройки — в профиле
         default: break
         }
         // Разделы настроек сайта (#sf, #sn…) — родные экраны; «Пароль и вход» и «Для бизнеса» остаются страницами сайта.
         if clean.hasPrefix("/profile/settings#"), let s = SettingsSection(hash: String(clean.split(separator: "#").last ?? "")) {
-            tab = .profile; paths[.profile] = NavigationPath([Route.settings(s)]); return
+            tab = .profile; paths[.profile] = [Route.settings(s)]; return
         }
         if clean.hasPrefix("/messages") {
             // Переписка — во вкладке «Сообщения», поверх списка.
             tab = .messages
-            var p = NavigationPath()
-            if let r = Route.from(path: clean) { p.append(r) }
-            paths[.messages] = p
+            paths[.messages] = Route.from(path: clean).map { [$0] } ?? []
             return
         }
-        if clean.hasPrefix("/profile") { tab = .profile; paths[.profile] = NavigationPath([Route.web(clean)]); return }
+        if clean.hasPrefix("/profile") { tab = .profile; paths[.profile] = [Route.web(clean)]; return }
         push(Route.from(path: clean) ?? .web(clean))
     }
 
     func reselect(_ t: Tab) {
         if tab == t {
-            paths[t] = NavigationPath()
+            paths[t] = []
         } else { tab = t }
         Haptics.play("selection")
     }

@@ -318,32 +318,68 @@ extension View {
 }
 
 /// «‹ Мои объявления» над заголовком (.pf-back сайта): 15/600, приглушённый.
-struct BackLink: View {
-    var title = "Назад"
-    /// Своё действие (страница сайта: сначала назад по её истории); по умолчанию — закрыть экран.
-    var action: (() -> Void)? = nil
+/// Шапка раздела (решение 25.11, «хлебные крошки»): путь «Профиль › Настройки», под ним круглая кнопка «‹»
+/// и крупный заголовок. Без заголовка (страница сайта со своим) — кнопка и путь в одну строку.
+struct PageHeader: View {
+    var title: String? = nil
+    /// Экран в стопке — по нему строится путь; нет в стопке (окно поверх) — только кнопка.
+    var route: Route? = nil
+    /// Раздел без своего экрана в конце пути («Настройки»).
+    var group: String? = nil
+    /// Последнее звено пути, когда заголовка нет (название страницы сайта).
+    var current: String? = nil
+    /// Своё действие кнопки (страница сайта: сначала назад по её истории); по умолчанию — закрыть экран.
+    var back: (() -> Void)? = nil
+    @EnvironmentObject private var nav: Nav
     @Environment(\.dismiss) private var dismiss
-    var body: some View {
-        Button { if let action { action() } else { dismiss() } } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "chevron.left").font(.system(size: 15, weight: .semibold))
-                Text(title).font(.on(15, .semibold))
-            }
-            .foregroundStyle(T.text2)
-            .frame(height: 44)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-}
 
-/// Заголовок страницы (h1 сайта на телефоне).
-struct PageTitle: View {
-    let text: String
-    var size: CGFloat = 28
     var body: some View {
-        Text(text).font(.on(size, .heavy)).foregroundStyle(T.text).fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 8) {
+            if title != nil { trail }
+            HStack(spacing: 12) {
+                Button { if let back { back() } else { dismiss() } } label: {
+                    Image(systemName: "chevron.left").font(.system(size: 16, weight: .bold)).foregroundStyle(T.text)
+                        .frame(width: 40, height: 40)
+                        .background(Circle().fill(T.card))
+                        .overlay(Circle().strokeBorder(T.line, lineWidth: 1))
+                        .shadow(color: Color(hex: 0x161A2B).opacity(0.08), radius: 7, y: 3)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Назад")
+                if let title {
+                    Text(title).font(.on(28, .heavy)).foregroundStyle(T.text).lineLimit(2).minimumScaleFactor(0.8)
+                } else {
+                    trail
+                }
+            }
+        }
+        .padding(.top, 6)
     }
+
+    private var trail: some View {
+        let all = route.map { r in (nav.paths[nav.tab] ?? []).contains(r) ? nav.crumbs(for: r) : [] } ?? []
+        // Длинный путь: первое звено, «…» и два последних.
+        let shown: [(title: String, go: (() -> Void)?)] = all.count > 3
+            ? [(all[0].title, all[0].go), ("…", nil)] + all.suffix(2).map { ($0.title, $0.go) }
+            : all.map { ($0.title, $0.go) }
+        let tail = [group, current].compactMap { $0 }.filter { !$0.isEmpty }
+        return HStack(spacing: 6) {
+            ForEach(Array(shown.enumerated()), id: \.offset) { i, c in
+                if i > 0 { sep }
+                if let go = c.go {
+                    Button(action: go) { Text(c.title).foregroundStyle(T.accent) }.buttonStyle(.plain)
+                } else { Text(c.title).foregroundStyle(T.faint) }
+            }
+            ForEach(Array(tail.enumerated()), id: \.offset) { i, t in
+                if i > 0 || !shown.isEmpty { sep }
+                Text(t).foregroundStyle(T.muted)
+            }
+        }
+        .font(.on(14.5, .semibold))
+        .lineLimit(1)
+    }
+
+    private var sep: some View { Text("›").foregroundStyle(T.faint) }
 }
 
 /// Круглая кнопка-значок (.icon-btn): 44, фон --surface.

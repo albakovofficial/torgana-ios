@@ -11,22 +11,6 @@ enum Bridge {
             share(body)
         case "haptic":
             Haptics.play(body["style"] as? String ?? "light")
-        case "push.state", "push.on", "push.off", "push.signout":
-            // Страница настроек сайта: включены ли push на этом iPhone, включить, выключить, перед выходом — забыть.
-            Task { @MainActor in
-                let push = PushManager.shared
-                var reply: [String: Any] = ["type": type, "ok": true]
-                switch type {
-                case "push.on":
-                    do { try await push.turnOn() } catch { reply["ok"] = false; reply["error"] = error.localizedDescription }
-                case "push.off": await push.turnOff()
-                case "push.signout": await push.forget()
-                default: break
-                }
-                reply["perm"] = await push.permission().rawValue
-                reply["on"] = await push.refresh()
-                WebController.shared.send(reply)
-            }
         case "auth.apple":
             AppleSignIn.shared.start(nonce: body["nonce"] as? String)
         case "badge":
@@ -39,16 +23,13 @@ enum Bridge {
                ["http", "https", "tel", "mailto"].contains(url.scheme?.lowercased() ?? "") {
                 UIApplication.shared.open(url)
             }
-        case "open.settings":
-            if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
         case "app.info":
             WebController.shared.send([
                 "type": "app.info",
                 "platform": "ios",
                 "version": WebController.appVersion,
                 "build": Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "",
-                "system": UIDevice.current.systemVersion,
-                "pushEnvironment": PushManager.environment
+                "system": UIDevice.current.systemVersion
             ])
         default:
             break

@@ -4,8 +4,10 @@
 
 - в User-Agent есть `TorganaApp/1.0.0 (iOS)`;
 - у `<html>` есть классы `in-app` и `in-app-ios` (ставятся до загрузки стилей);
-- есть объект `window.TorganaApp` (`platform`, `version`, `native`, `push`, `post(msg)`). `push: 'app'` — push ведёт приложение
-  (адрес устройства сайту не передаётся, сайт только спрашивает и просит — команды `push.*` ниже).
+- есть объект `window.TorganaApp` (`platform`, `version`, `native`, `post(msg)`).
+
+Push сайт не касается: их включает и выключает само приложение (родные экраны «Уведомления»), адрес устройства
+уходит на сервер из приложения (`POST /api/push/apns`). С сайта 1.60.0 push в браузер убраны совсем.
 
 Сообщения принимаются **только со страниц torgana.ru** — чужие рамки и страницы входа Яндекс/VK звать приложение не могут.
 
@@ -15,15 +17,10 @@
 |---|---|---|
 | `share` | `url`, `text` | системное окно «Поделиться». `url` может быть путём (`/l/123`) |
 | `haptic` | `style`: `light` `medium` `heavy` `selection` `success` `warning` `error` | виброотклик |
-| `push.state` | — | включены ли push на этом iPhone; ответ — `push.state` |
-| `push.on` | — | включить: запрос разрешения iPhone, адрес устройства, `POST /api/push/apns`; ответ — `push.on` |
-| `push.off` | — | выключить на этом iPhone (`POST /api/push/apns/off`, больше не отправлять адрес); ответ — `push.off` |
-| `push.signout` | — | перед выходом из аккаунта (пока сессия жива): убрать адрес у этого человека; ответ — `push.signout` |
 | `auth.apple` | `nonce` (необязательно, лучше дать с сервера) | окно «Войти с Apple»; ответ — `auth.apple` или `auth.apple.error` |
 | `badge` | `count` | число на значке приложения (0 — убрать) |
 | `open.external` | `url` | открыть ссылку в Safari / звонилке / почте |
-| `open.settings` | — | открыть настройки приложения (если уведомления запрещены) |
-| `app.info` | — | ответ — `app.info` (версия, сборка, iOS, окружение push) |
+| `app.info` | — | ответ — `app.info` (версия, сборка, iOS) |
 
 ## Приложение → сайт: событие `torgana-native`
 
@@ -31,9 +28,6 @@
 window.addEventListener('torgana-native', (e) => {
   const m = e.detail;
   switch (m.type) {
-    case 'push.state': case 'push.on': case 'push.off': case 'push.signout':
-      // { ok, error?, perm: 'granted' | 'denied' | 'default', on } — on: push включены на этом iPhone для вошедшего
-      break;
     case 'auth.apple':      // { identityToken, authorizationCode?, nonce, user, name?, email? }
       fetch('/api/auth/apple', { method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(m) }).then(() => location.reload());
@@ -69,6 +63,5 @@ window.addEventListener('torgana-native', (e) => {
 
 ## Что спрятать на сайте в режиме приложения (`html.in-app`)
 
-- web-push и «Установить на главный экран» — в приложении свои уведомления;
 - оплату тарифов и продвижения, раздел «Для бизнеса» и страницы `/pay/…` (правила App Store 3.1.1 и 3.1.3) — решено: в приложении их нет;
 - кнопку «Поделиться» сайта — заменить вызовом `share`.

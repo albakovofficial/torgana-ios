@@ -112,7 +112,7 @@ struct LoginView: View {
         VStack(alignment: .leading, spacing: 12) {
             if register { AuthField(icon: "person", placeholder: "Имя", text: $name, content: .name) }
             AuthField(icon: "envelope", placeholder: "Почта", text: $email, keyboard: .emailAddress, content: .username)
-            AuthField(icon: "lock", placeholder: register ? "Пароль, минимум 8 символов" : "Пароль", text: $password, secure: true,
+            AuthField(icon: "lock", placeholder: register ? "Придумайте пароль" : "Пароль", text: $password, secure: true,
                       content: register ? .newPassword : .password)
             if register {
                 if !password.isEmpty { Strength(password: password) }
@@ -181,7 +181,7 @@ struct LoginView: View {
             }
             .accessibilityLabel("Войти с Apple")
             if providers.contains("yandex") {
-                oauth("yandex", label: "Войти с Яндекс ID", fill: Color(hex: 0x161A2B)) {
+                oauth("yandex", label: "Войти с Яндекс ID", fill: Color.dyn(0x161A2B, 0x2C3248)) {
                     Text("Я").font(.system(size: 15, weight: .heavy)).foregroundStyle(.white)
                         .frame(width: 24, height: 24).background(Circle().fill(Color(hex: 0xFC3F1D)))
                 }

@@ -160,7 +160,7 @@ struct MainView: View {
         }
         .animation(.easeOut(duration: 0.2), value: nav.barVisible)
         .modifier(ToastHost())
-        .sheet(isPresented: $app.needLogin, onDismiss: { app.loginRegister = false }) {
+        .fullScreenCover(isPresented: $app.needLogin, onDismiss: { app.loginRegister = false }) {
             NavigationStack { LoginView(start: app.loginRegister ? .register : .login) }
         }
         // Один раз после входа, как на сайте; потом — системный запрос iPhone.

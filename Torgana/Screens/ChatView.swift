@@ -33,7 +33,6 @@ struct ChatView: View {
 
     private var convId: Int? { if case .conv(let id) = kind { return id } else { return nil } }
 
-    @Environment(\.dismiss) private var dismiss
     @State private var asksUsed = false
     @State private var photoPicker = false
     @State private var videoPicker = false
@@ -145,11 +144,7 @@ struct ChatView: View {
     // MARK: шапка: назад, аватар собеседника 40, имя 17/700, под ним «печатает…» (синим) или кто это; «ещё»
     private var chatHeader: some View {
         HStack(spacing: 10) {
-            Button { dismiss() } label: {
-                Image(systemName: "chevron.left").font(.system(size: 20, weight: .semibold)).foregroundStyle(T.accent)
-                    .frame(width: 36, height: 40)
-            }
-            .buttonStyle(.plain).accessibilityLabel("Назад")
+            BackButton()
             if kind == .support {
                 Image("SupportAvatar").resizable().frame(width: 40, height: 40)
                 VStack(alignment: .leading, spacing: 1) {

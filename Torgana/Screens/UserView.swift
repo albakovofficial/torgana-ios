@@ -16,7 +16,7 @@ struct UserView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                PageHeader(route: .user(id), current: "Продавец").padding(.bottom, 14)
+                PageHeader().padding(.bottom, 14)
                 if let u = user {
                     SellerCard(user: u, count: items.count) { actions(u) }
                     Seg(items: [("ads", "Объявления"), ("rep", "Репутация")], value: $tab, counts: ["ads": items.count], level: ("rep", u.rep?.level ?? 0))

@@ -296,7 +296,7 @@ struct NoticesView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                PageHeader(title: "Уведомления", route: .notices)
+                PageHeader(title: "Уведомления")
                 PushCard().padding(.top, 18)
                 if loading && items.isEmpty {
                     LoadingView()

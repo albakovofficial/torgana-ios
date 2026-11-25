@@ -48,40 +48,6 @@ enum Tab: Int, CaseIterable {
         default: return .init(title: "Войдите в Торгану", text: "Объявления, переписка и избранное — в одном профиле")
         }
     }
-
-    var title: String {
-        switch self {
-        case .home: return "Главная"
-        case .favorites: return "Избранное"
-        case .post: return "Новое объявление"
-        case .messages: return "Сообщения"
-        case .profile: return "Профиль"
-        }
-    }
-}
-
-extension Route {
-    /// Название экрана в «хлебных крошках».
-    var crumb: String {
-        switch self {
-        case .listing: return "Объявление"
-        case .search(let q): return q.q.isEmpty ? "Поиск" : "«\(q.q)»"
-        case .chat: return "Чат"
-        case .support: return "Поддержка"
-        case .notices: return "Уведомления"
-        case .edit: return "Редактирование"
-        case .user: return "Продавец"
-        case .doc(let slug): return DocView.titles[slug] ?? "Документ"
-        case .settings(let s): return s.title
-        case .web(let path): return Route.webTitles.first { path.hasPrefix($0.0) }?.1 ?? "Страница"
-        }
-    }
-
-    static let webTitles: [(String, String)] = [
-        ("/profile/reputation", "Сделки и отзывы"), ("/profile/following", "Подписки"), ("/profile/stats", "Статистика"),
-        ("/profile/settings#sp", "Пароль и вход"), ("/profile/settings#s-biz", "Для бизнеса"), ("/profile/settings", "Настройки"),
-        ("/admin", "Модерация"), ("/page/help", "Помощь и безопасность"), ("/page/safety", "Безопасность"), ("/forgot", "Восстановление пароля")
-    ]
 }
 
 // Навигация: выбранная вкладка и стопка экранов в каждой.
@@ -89,7 +55,7 @@ extension Route {
 final class Nav: ObservableObject {
     static let shared = Nav()
     @Published var tab: Tab = .home
-    @Published var paths: [Tab: [Route]] = [:]   // стопка экранов — по ней же строятся «хлебные крошки»
+    @Published var paths: [Tab: [Route]] = [:]   // стопка экранов в каждой вкладке
     /// Экраны со своей нижней панелью (объявление) прячут нижнее меню.
     @Published var barHidden = 0
     /// Подача объявления во вкладке «+»: внизу своя панель «Назад / Далее».
@@ -108,16 +74,6 @@ final class Nav: ObservableObject {
 
     /// С чистого листа: все вкладки — к началу, открыта главная (после выхода из профиля).
     func reset() { paths = [:]; tab = .home }
-
-    /// «Хлебные крошки» экрана: вкладка и экраны под ним; нажатие — вернуться на тот уровень.
-    func crumbs(for route: Route?) -> [(title: String, go: () -> Void)] {
-        let t = tab
-        let stack = paths[t] ?? []
-        let depth = route.flatMap { stack.lastIndex(of: $0) } ?? stack.count
-        var out: [(String, () -> Void)] = [(t.title, { self.paths[t] = [] })]
-        for i in 0..<depth { let r = stack[i]; out.append((r.crumb, { self.paths[t] = Array(stack.prefix(i + 1)) })) }
-        return out
-    }
 
     /// Открыть адрес сайта: родной экран, если он есть, иначе — страницу сайта.
     func open(path: String) {

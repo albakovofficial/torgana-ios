@@ -35,7 +35,7 @@ struct SettingsScreen: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                PageHeader(title: section.title, route: .settings(section), group: "Настройки").padding(.bottom, 18)
+                PageHeader(title: section.title).padding(.bottom, 18)
                 switch section {
                 case .profile: ProfileEditForm()
                 case .notify: NotifySettings()

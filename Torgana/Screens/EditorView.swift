@@ -72,16 +72,10 @@ struct EditorView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    Button { if editId != nil { dismiss() } else { nav.open(path: "/profile/listings") } } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "chevron.left").font(.system(size: 15, weight: .semibold))
-                            Text(editId == nil ? "Мои объявления" : "К объявлению").font(.on(15, .semibold))
-                        }
-                        .foregroundStyle(T.text2).frame(height: 44)
+                    PageHeader(title: editId == nil ? "Новое объявление" : "Редактирование") {
+                        if editId != nil { dismiss() } else { nav.open(path: "/profile/listings") }
                     }
-                    .buttonStyle(.plain)
                     .id("top")
-                    PageTitle(text: editId == nil ? "Новое объявление" : "Редактирование", size: 30)
                     Text(editId == nil ? "Бесплатно и без лимитов. Каждое объявление проверяет модератор — обычно это несколько часов."
                          : "После сохранения объявление снова проверит модератор — обычно несколько часов. Пока идёт проверка, его не видно в поиске.")
                         .font(.on(15)).foregroundStyle(T.muted).lineSpacing(4).padding(.top, 10)

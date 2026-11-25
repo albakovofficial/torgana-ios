@@ -263,11 +263,7 @@ private struct CodeStep: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                Button(action: back) {
-                    Image(systemName: "chevron.left").font(.system(size: 17, weight: .bold)).foregroundStyle(T.text)
-                        .frame(width: 40, height: 40).background(Circle().fill(T.surface))
-                }
-                .accessibilityLabel("Назад")
+                BackButton(action: back)
                 Image(systemName: "envelope").font(.system(size: 28, weight: .medium)).foregroundStyle(T.accent)
                     .frame(width: 64, height: 64).background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(T.accentSoft))
                     .padding(.top, 28)

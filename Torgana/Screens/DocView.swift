@@ -16,7 +16,7 @@ struct DocView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                PageHeader(title: title.isEmpty ? (DocView.titles[slug] ?? "Документ") : title, route: .doc(slug))
+                PageHeader(title: title.isEmpty ? (DocView.titles[slug] ?? "Документ") : title)
                 if let text {
                     Text(text).font(.on(17)).foregroundStyle(T.text).tint(T.accent).lineSpacing(7).textSelection(.enabled).padding(.top, 20)
                 } else if let error {

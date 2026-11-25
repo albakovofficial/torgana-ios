@@ -133,7 +133,6 @@ final class WebPage: NSObject, ObservableObject, WKNavigationDelegate, WKUIDeleg
     let web: WKWebView
     @Published var loading = true
     @Published var failed = false
-    @Published var title = ""
     /// Адрес открытой страницы (сайт меняет его без перезагрузки — следим через KVO).
     @Published var path = ""
     private var lastURL: URL?
@@ -171,7 +170,6 @@ final class WebPage: NSObject, ObservableObject, WKNavigationDelegate, WKUIDeleg
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         loading = false
         failed = false
-        title = webView.title ?? ""
         CookieSync.shared.pullFromWeb()     // вошли или вышли на странице сайта — родные экраны узнают сразу
     }
 
@@ -265,12 +263,6 @@ struct WebScreen: View {
         _page = StateObject(wrappedValue: WebPage(path: path))
     }
 
-    /// Название страницы в пути: заголовок документа без « — Торгана», пока грузится — из списка разделов.
-    private var pageTitle: String {
-        let t = page.title.components(separatedBy: " — ").first?.components(separatedBy: " · ").first ?? ""
-        return t.isEmpty || t == "Торгана" ? Route.web(path).crumb : t
-    }
-
     var body: some View {
         if closeOnLogin {
             // Вход через Яндекс/VK — в окне поверх экрана входа.
@@ -282,7 +274,7 @@ struct WebScreen: View {
         } else {
             // Раздел сайта внутри приложения: шапка и нижнее меню — родные, как на остальных экранах.
             VStack(alignment: .leading, spacing: 0) {
-                PageHeader(route: .web(path), current: pageTitle) { if page.web.canGoBack { page.web.goBack() } else { dismiss() } }
+                PageHeader { if page.web.canGoBack { page.web.goBack() } else { dismiss() } }
                     .padding(.horizontal, 20).padding(.bottom, 6)
                 WebPageView(page: page)
             }

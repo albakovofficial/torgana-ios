@@ -51,7 +51,7 @@ struct ListingView: View {
         let l = d.listing
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                crumbs(l).padding(.top, 14)
+                BackButton().padding(.top, 10)
                 photos(l).padding(.top, 14)
                 panel(l).padding(.top, 28)
                 if l.status != nil && l.status != "active" { statusNote(l).padding(.top, 16) }
@@ -70,28 +70,6 @@ struct ListingView: View {
             .padding(.horizontal, 20)
             TabBarSpace()
         }
-    }
-
-    // «Главная › Транспорт › Москва» — 14, приглушённый; каждое звено — ссылка.
-    private func crumbs(_ l: Listing) -> some View {
-        let cat = app.config?.category(l.category)
-        return HStack(spacing: 8) {
-            crumb("Главная") { nav.open(path: "/") }
-            if let cat {
-                Text("›").foregroundStyle(T.muted)
-                crumb(cat.name) { var q = SearchQuery(); q.category = cat.id; nav.push(.search(q)) }
-            }
-            if let city = l.city, !city.isEmpty {
-                Text("›").foregroundStyle(T.muted)
-                crumb(city) { var q = SearchQuery(); q.category = l.category ?? ""; q.city = city; nav.push(.search(q)) }
-            }
-        }
-        .font(.on(14))
-        .lineLimit(1)
-    }
-
-    private func crumb(_ t: String, _ go: @escaping () -> Void) -> some View {
-        Button(t, action: go).foregroundStyle(T.muted).buttonStyle(.plain)
     }
 
     private func photos(_ l: Listing) -> some View {

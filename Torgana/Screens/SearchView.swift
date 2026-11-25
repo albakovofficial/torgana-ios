@@ -78,8 +78,11 @@ struct SearchView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                SearchCapsule(text: $text, focus: $focused, city: query.city, onCity: { cityPicker = true }, onGo: { query.q = text.trimmingCharacters(in: .whitespaces) })
-                    .padding(.top, 4)
+                HStack(spacing: 10) {
+                    BackButton()
+                    SearchCapsule(text: $text, focus: $focused, city: query.city, onCity: { cityPicker = true }, onGo: { query.q = text.trimmingCharacters(in: .whitespaces) })
+                }
+                .padding(.top, 4)
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
                     Text(title).font(.on(24, .bold)).foregroundStyle(T.text).lineLimit(2)
                     if let total = feed.total {

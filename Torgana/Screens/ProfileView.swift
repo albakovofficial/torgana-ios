@@ -77,7 +77,7 @@ struct ProfileView: View {
             Text("Войдите, чтобы размещать объявления, переписываться с продавцами и сохранять избранное.")
                 .font(.on(16)).foregroundStyle(T.muted).multilineTextAlignment(.center)
             Button("Войти") { app.needLogin = true }.buttonStyle(TButton(kind: .dark)).padding(.top, 6)
-            Button("Создать профиль") { app.needLogin = true }.buttonStyle(TButton(kind: .soft))
+            Button("Создать профиль") { app.loginRegister = true; app.needLogin = true }.buttonStyle(TButton(kind: .soft))
             SettingsGroup {
                 SettingsRow(icon: "headphones", color: Tint.green, title: "Поддержка") { nav.push(.support) }
                 SettingsRow(icon: "doc.text", color: Tint.gray, title: "Правила и документы", last: true) { nav.push(.doc("rules")) }

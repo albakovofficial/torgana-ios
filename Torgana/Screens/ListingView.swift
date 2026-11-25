@@ -523,6 +523,7 @@ struct ReportSheet: View {
 // Плашки в несколько строк.
 struct FlowLayout: Layout {
     var spacing: CGFloat = 8
+    var center = false
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let width = proposal.width ?? .infinity
@@ -538,13 +539,21 @@ struct FlowLayout: Layout {
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var x = bounds.minX, y = bounds.minY, row: CGFloat = 0
+        // Раскладываем по строкам; center — строки по центру (плашки категорий на экране входа).
+        var rows: [[(LayoutSubview, CGSize)]] = [[]]
+        var x: CGFloat = 0
         for v in subviews {
             let s = v.sizeThatFits(.unspecified)
-            if x > bounds.minX && x + s.width > bounds.maxX { x = bounds.minX; y += row + spacing; row = 0 }
-            v.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(s))
+            if x > 0 && x + s.width > bounds.width { rows.append([]); x = 0 }
+            rows[rows.count - 1].append((v, s))
             x += s.width + spacing
-            row = max(row, s.height)
+        }
+        var y = bounds.minY
+        for r in rows {
+            let w = r.map(\.1.width).reduce(0, +) + spacing * CGFloat(max(r.count - 1, 0))
+            var x = bounds.minX + (center ? (bounds.width - w) / 2 : 0)
+            for (v, s) in r { v.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(s)); x += s.width + spacing }
+            y += (r.map(\.1.height).max() ?? 0) + spacing
         }
     }
 }

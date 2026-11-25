@@ -15,6 +15,8 @@ final class AppState: ObservableObject {
     }
     /// Избранное, изменённое на этом экране: id → в избранном ли. Карточки в других списках сразу видят изменение.
     @Published var favs: [Int: Bool] = [:]
+    /// Окно входа открыть сразу на регистрации («Создать профиль»).
+    var loginRegister = false
     @Published var toast: Toast?
 
     struct Toast: Equatable { let text: String; let bad: Bool; let id = UUID() }
@@ -29,7 +31,12 @@ final class AppState: ObservableObject {
         CookieSync.shared.start()
         #if DEBUG
         // Снимки экранов: запуск с -route /l/5 сразу открывает нужный экран (данные он грузит сам).
-        if let r = UserDefaults.standard.string(forKey: "route"), !r.isEmpty { Nav.shared.open(path: r) }
+        if let r = UserDefaults.standard.string(forKey: "route"), !r.isEmpty {
+            if r == "/login" || r == "/register" {
+                // окно входа — когда профиль уже загружен (иначе его загрузка закроет окно)
+                Task { try? await Task.sleep(nanoseconds: 3_000_000_000); loginRegister = r == "/register"; needLogin = true }
+            } else { Nav.shared.open(path: r) }
+        }
         #endif
         Task {
             await loadConfig()

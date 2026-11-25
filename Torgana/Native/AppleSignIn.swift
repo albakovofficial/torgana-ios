@@ -44,6 +44,29 @@ final class AppleSignIn: NSObject {
         request.nonce = AppleSignIn.sha256(raw)
     }
 
+    /// Родной экран входа: системное окно Apple со своей кнопкой (значок в ряду с Яндексом и VK).
+    @MainActor
+    func authorize() async -> Result<ASAuthorization, Error> {
+        await withCheckedContinuation { c in
+            let request = ASAuthorizationAppleIDProvider().createRequest()
+            prepare(request)
+            let flow = NativeFlow { [weak self] r in self?.native = nil; c.resume(returning: r) }
+            native = flow
+            let controller = ASAuthorizationController(authorizationRequests: [request])
+            controller.delegate = flow
+            controller.presentationContextProvider = self
+            controller.performRequests()
+        }
+    }
+    private var native: NativeFlow?
+
+    private final class NativeFlow: NSObject, ASAuthorizationControllerDelegate {
+        let done: (Result<ASAuthorization, Error>) -> Void
+        init(_ done: @escaping (Result<ASAuthorization, Error>) -> Void) { self.done = done }
+        func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) { done(.success(authorization)) }
+        func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) { done(.failure(error)) }
+    }
+
     /// Что отправить на сервер (POST /api/auth/apple). nonce одноразовый — следующий берём сразу.
     func payload(_ authorization: ASAuthorization) -> [String: JSONValue]? {
         guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,

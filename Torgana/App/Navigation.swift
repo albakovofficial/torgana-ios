@@ -104,6 +104,9 @@ final class Nav: ObservableObject {
 
     func push(_ route: Route) { paths[tab, default: []].append(route) }
 
+    /// С чистого листа: все вкладки — к началу, открыта главная (после выхода из профиля).
+    func reset() { paths = [:]; tab = .home }
+
     /// «Хлебные крошки» экрана: вкладка и экраны под ним; нажатие — вернуться на тот уровень.
     func crumbs(for route: Route?) -> [(title: String, go: () -> Void)] {
         let t = tab

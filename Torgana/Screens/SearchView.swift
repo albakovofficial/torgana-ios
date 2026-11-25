@@ -127,7 +127,7 @@ struct SearchView: View {
         .task(id: query) { await feed.reload(query) }
         .onAppear { if query.focus { focused = true; query.focus = false } }
         .sheet(isPresented: $filters) { FiltersSheet(query: $query) }
-        .sheet(isPresented: $cityPicker) { CityPicker(city: $query.city) }
+        .sheet(isPresented: $cityPicker) { OptionPicker(title: "Город", options: app.config?.cities ?? [], value: $query.city, any: "Вся Россия") }
     }
 
     /// Как на сайте: «запрос» в кавычках-ёлочках, иначе раздел.

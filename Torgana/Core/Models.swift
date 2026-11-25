@@ -20,7 +20,12 @@ struct FieldDef: Codable, Hashable {
     let min: Double?
     let max: Double?
     let step: Double?
+    /// Модели по маркам (у машин и телефонов); fixed — только из списка марки (машины), иначе — подсказки.
+    let suggest: [String: [String]]?
+    let fixed: Bool?
 }
+
+extension FieldDef: Identifiable { var id: String { key } }
 
 struct Subcategory: Codable, Identifiable, Hashable {
     let id: String

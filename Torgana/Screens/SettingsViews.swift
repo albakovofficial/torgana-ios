@@ -112,7 +112,7 @@ private struct ProfileEditForm: View {
             name = me.name; city = me.city ?? ""; phone = me.phone ?? ""
         }
         .onChange(of: photo) { _, item in if let item { Task { await upload(item) } } }
-        .sheet(isPresented: $cityPicker) { CityPicker(city: $city) }
+        .sheet(isPresented: $cityPicker) { OptionPicker(title: "Город", options: app.config?.cities ?? [], value: $city) }
     }
 
     private func field<C: View>(_ label: String, @ViewBuilder _ c: () -> C) -> some View {

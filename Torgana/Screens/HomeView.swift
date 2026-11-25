@@ -28,7 +28,7 @@ struct HomeView: View {
         .refreshable { await feed.reload(query) }
         .task(id: query) { await feed.reload(query) }
         .sitePage()
-        .sheet(isPresented: $cityPicker) { CityPicker(city: $app.city) }
+        .sheet(isPresented: $cityPicker) { OptionPicker(title: "Город", options: app.config?.cities ?? [], value: $app.city, any: "Вся Россия") }
     }
 
     private var query: SearchQuery {
@@ -131,24 +131,25 @@ struct FeedView: View {
     }
 }
 
-// Выбор города: поиск по списку городов сайта и «Вся Россия».
-struct CityPicker: View {
-    @Binding var city: String
-    @EnvironmentObject private var app: AppState
+// Выбор из длинного списка с поиском: город, марка и модель машины.
+struct OptionPicker: View {
+    let title: String
+    let options: [String]
+    @Binding var value: String
+    /// Строка «без выбора» вверху списка («Вся Россия»).
+    var any: String? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var q = ""
 
     var body: some View {
         NavigationStack {
             List {
-                if q.isEmpty {
-                    row("Вся Россия", value: "")
-                }
+                if q.isEmpty, let any { row(any, value: "") }
                 ForEach(filtered, id: \.self) { row($0, value: $0) }
             }
             .listStyle(.plain)
-            .searchable(text: $q, placement: .navigationBarDrawer(displayMode: .always), prompt: "Город")
-            .navigationTitle("Город")
+            .searchable(text: $q, placement: .navigationBarDrawer(displayMode: .always), prompt: title)
+            .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Закрыть") { dismiss() } } }
         }
@@ -156,21 +157,21 @@ struct CityPicker: View {
     }
 
     private var filtered: [String] {
-        let all = app.config?.cities ?? []
-        let t = q.trimmingCharacters(in: .whitespaces).lowercased()
-        return t.isEmpty ? all : all.filter { $0.lowercased().contains(t) }
+        let k = { (x: String) in x.lowercased().replacingOccurrences(of: "-", with: "").replacingOccurrences(of: " ", with: "") }
+        let t = k(q.trimmingCharacters(in: .whitespaces))
+        return t.isEmpty ? options : options.filter { k($0).contains(t) }
     }
 
     private func row(_ title: String, value: String) -> some View {
         Button {
-            city = value
+            self.value = value
             Haptics.play("selection")
             dismiss()
         } label: {
             HStack {
                 Text(title).font(.on(17)).foregroundStyle(T.text)
                 Spacer()
-                if city == value { Image(systemName: "checkmark").foregroundStyle(T.accent).font(.system(size: 15, weight: .bold)) }
+                if self.value == value { Image(systemName: "checkmark").foregroundStyle(T.accent).font(.system(size: 15, weight: .bold)) }
             }
             .contentShape(Rectangle())
         }

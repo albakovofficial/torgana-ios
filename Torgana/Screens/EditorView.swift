@@ -46,6 +46,8 @@ struct EditorView: View {
     @State private var pickingCat = false
     @State private var gridW: CGFloat = 0
     @State private var autoName = ""
+    /// Длинный список (марка) или модель из списка марки — выбор с поиском.
+    @State private var listField: FieldDef?
 
     private static let stepCount = 3
     private var stepTitle: String { [editId == nil ? "Новое объявление" : "Редактирование", "Что продаёте", "Всё верно?"][step] }
@@ -70,7 +72,10 @@ struct EditorView: View {
         .onAppear { demoStep() }
         .onChange(of: app.config?.categories.count ?? 0) { _, _ in demoStep() }
         #endif
-        .sheet(isPresented: $cityPicker) { CityPicker(city: $city) }
+        .sheet(item: $listField) { f in
+            OptionPicker(title: f.label, options: listOptions(f) ?? [], value: Binding(get: { attrs[f.key] ?? "" }, set: { setAttr(f.key, $0) }))
+        }
+        .sheet(isPresented: $cityPicker) { OptionPicker(title: "Город", options: app.config?.cities ?? [], value: $city) }
     }
 
     /// Пока заполняют форму, вместо нижнего меню — панель «Далее» / «Опубликовать».
@@ -385,33 +390,60 @@ struct EditorView: View {
         autoName = r?.title ?? ""
     }
 
+    /// Варианты для выбора с поиском: длинный список (больше 12) или модели выбранной марки; nil — обычное поле.
+    private func listOptions(_ f: FieldDef) -> [String]? {
+        if f.type == "select", let o = f.options, o.count > 12 { return o }
+        if f.type == "text", f.fixed == true, let list = f.suggest?[attrs["brand"] ?? ""], !list.isEmpty { return list }
+        return nil
+    }
+
+    /// Сменили марку — модель другой марки сбрасываем.
+    private func setAttr(_ key: String, _ v: String) {
+        attrs[key] = v
+        guard key == "brand", let m = fields.first(where: { $0.key == "model" && $0.fixed == true }) else { return }
+        if let list = m.suggest?[v], !list.contains(attrs["model"] ?? "") { attrs["model"] = nil }
+    }
+
     @ViewBuilder private func fieldRow(_ f: FieldDef) -> some View {
-        let binding = Binding(get: { attrs[f.key] ?? "" }, set: { attrs[f.key] = $0 })
-        switch f.type {
-        case "select":
-            Menu {
-                Picker(f.label, selection: binding) {
-                    Text("Не указывать").tag("")
-                    ForEach(f.options ?? [], id: \.self) { Text($0).tag($0) }
-                }
-            } label: {
+        let binding = Binding(get: { attrs[f.key] ?? "" }, set: { setAttr(f.key, $0) })
+        if listOptions(f) != nil {
+            Button { listField = f } label: {
                 box(f.label) {
                     HStack {
                         Text(binding.wrappedValue.isEmpty ? "Выберите" : binding.wrappedValue).font(.on(16, .semibold)).foregroundStyle(binding.wrappedValue.isEmpty ? T.faint : T.text)
                         Spacer()
-                        Image(systemName: "chevron.up.chevron.down").font(.system(size: 12, weight: .semibold)).foregroundStyle(T.muted)
+                        Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(T.muted)
                     }
                 }
             }
-        case "number":
-            box(f.label) {
-                HStack {
-                    TextField(f.placeholder ?? "", text: binding).keyboardType(f.step != nil ? .decimalPad : .numberPad).font(.on(16, .semibold))
-                    if let u = f.unit { Text(u).foregroundStyle(T.muted) }
+            .buttonStyle(.plain)
+        } else {
+            switch f.type {
+            case "select":
+                Menu {
+                    Picker(f.label, selection: binding) {
+                        Text("Не указывать").tag("")
+                        ForEach(f.options ?? [], id: \.self) { Text($0).tag($0) }
+                    }
+                } label: {
+                    box(f.label) {
+                        HStack {
+                            Text(binding.wrappedValue.isEmpty ? "Выберите" : binding.wrappedValue).font(.on(16, .semibold)).foregroundStyle(binding.wrappedValue.isEmpty ? T.faint : T.text)
+                            Spacer()
+                            Image(systemName: "chevron.up.chevron.down").font(.system(size: 12, weight: .semibold)).foregroundStyle(T.muted)
+                        }
+                    }
                 }
+            case "number":
+                box(f.label) {
+                    HStack {
+                        TextField(f.placeholder ?? "", text: binding).keyboardType(f.step != nil ? .decimalPad : .numberPad).font(.on(16, .semibold))
+                        if let u = f.unit { Text(u).foregroundStyle(T.muted) }
+                    }
+                }
+            default:
+                box(f.label) { TextField(f.placeholder ?? "", text: binding).font(.on(16, .semibold)) }
             }
-        default:
-            box(f.label) { TextField(f.placeholder ?? "", text: binding).font(.on(16, .semibold)) }
         }
     }
 

@@ -56,6 +56,23 @@ struct Rep: Codable, Hashable {
     let deals: Int?
     let total: Int?
     let newbie: Bool?
+    // На странице продавца (repOf сервера): надёжный покупатель, жалобы за год, скорость ответа, комплименты, вехи.
+    let buyer: Bool?
+    let complaints: Int?
+    let reply: RepReply?
+    let tags: [RepTag]?
+    let marks: [String]?
+}
+
+struct RepReply: Codable, Hashable { let time: String? }
+struct RepTag: Codable, Hashable { let tag: String; let n: Int }
+
+/// Магазин (тариф для бизнеса): название, обложка, описание; official — официальный аккаунт Торганы.
+struct PublicShop: Codable, Hashable {
+    let name: String?
+    let cover: String?
+    let about: String?
+    let official: Bool?
 }
 
 struct FirstMedal: Codable, Hashable { let no: Int?; let form: String?; let own: String? }
@@ -387,6 +404,7 @@ struct PublicUser: Codable, Hashable {
     var followers: Int?
     var following: Bool?
     var block: String?
+    let shop: PublicShop?
 }
 
 struct UserResponse: Codable { let user: PublicUser }

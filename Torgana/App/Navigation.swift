@@ -120,6 +120,14 @@ struct MainView: View {
     @EnvironmentObject private var nav: Nav
     @ObservedObject private var push = PushManager.shared
 
+    /// Вкладка гостю недоступна — на главную и шторка входа; после входа — открыть её.
+    private func guestGuard() {
+        let t = nav.tab
+        guard app.meKnown, t != .home, app.me == nil else { return }
+        nav.tab = .home
+        app.requireLogin(t.loginAsk) { Nav.shared.tab = t }
+    }
+
     var body: some View {
         ZStack(alignment: .bottom) {
             ZStack {
@@ -140,9 +148,8 @@ struct MainView: View {
         .fullScreenCover(item: Binding(get: { app.loginFull.map(LoginFull.init) }, set: { app.loginFull = $0?.mode }),
                          onDismiss: { app.loginClosed() }) { f in NavigationStack { LoginView(start: f.mode) } }
         // Ссылка или push открыли раздел, а профиля нет — на главную и шторка входа.
-        .onChange(of: nav.tab) { _, t in
-            if t != .home && app.me == nil { nav.tab = .home; app.requireLogin(t.loginAsk) { Nav.shared.tab = t } }
-        }
+        .onChange(of: nav.tab) { _, _ in guestGuard() }
+        .onChange(of: app.meKnown) { _, _ in guestGuard() }
         // Один раз после входа, как на сайте; потом — системный запрос iPhone.
         .alert("Включить уведомления?", isPresented: $push.ask) {
             Button("Включить") {

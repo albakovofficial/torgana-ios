@@ -7,6 +7,8 @@ final class AppState: ObservableObject {
     static let shared = AppState()
 
     @Published var me: Me?
+    /// Сервер уже ответил, кто вошёл: до этого вкладки гостя не закрываем (ссылка при запуске открывается раньше профиля).
+    @Published var meKnown = false
     @Published var config: AppConfig?
     @Published var unread = 0
     @Published var notices = 0
@@ -74,6 +76,7 @@ final class AppState: ObservableObject {
         }
         let changed = me?.id != r.user?.id
         me = r.user
+        meKnown = true
         if changed && r.user == nil { Nav.shared.reset() }   // вышли — с главной, гостем
         if changed && r.user != nil, let then = pending { pending = nil; Task { await then() } }
         if changed { Task { await PushManager.shared.sync(); await PushManager.shared.askOnce() } }

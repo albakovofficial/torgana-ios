@@ -180,7 +180,7 @@ struct MainView: View {
         .modifier(ToastHost())
         .sheet(item: $app.ask, onDismiss: { app.loginClosed() }) { LoginSheet(ask: $0) }
         .fullScreenCover(item: Binding(get: { app.loginFull.map(LoginFull.init) }, set: { app.loginFull = $0?.mode }),
-                         onDismiss: { app.loginClosed() }) { NavigationStack { LoginView(start: $0.mode) } }
+                         onDismiss: { app.loginClosed() }) { f in NavigationStack { LoginView(start: f.mode) } }
         // Ссылка или push открыли раздел, а профиля нет — на главную и шторка входа.
         .onChange(of: nav.tab) { _, t in
             if t != .home && app.me == nil { nav.tab = .home; app.requireLogin(t.loginAsk) { Nav.shared.tab = t } }

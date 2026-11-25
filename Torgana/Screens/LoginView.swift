@@ -420,6 +420,7 @@ struct AuthButtons: View {
             }
             .buttonStyle(.plain)
             Text(fine).font(.on(12)).foregroundStyle(T.faint).frame(maxWidth: .infinity).multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .sheet(item: $oauthURL) { link in
             NavigationStack { WebScreen(path: link.url.absoluteString, title: "Вход", closeOnLogin: true) }

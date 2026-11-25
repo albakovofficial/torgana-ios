@@ -13,6 +13,7 @@ struct UserView: View {
     @State private var confirmBlock = false
     @State private var pick = false
     @State private var repTab = false
+    @State private var aboutOpen = false
 
     private static let replyText = ["hour": "за час", "hours": "за 1–3 ч", "day": "в течение дня", "days": "за 1–2 дня"]
     private static let marks = ["first": "Первая сделка", "10": "10 сделок", "50": "50 сделок", "100": "100 сделок", "year": "Год без жалоб"]
@@ -95,7 +96,10 @@ struct UserView: View {
                     Avatar(name: u.name, url: u.avatar, size: 84)
                         .overlay(Circle().strokeBorder(T.card, lineWidth: 4))
                         .shadow(color: Color(hex: 0x161A2B).opacity(0.15), radius: 10, y: 6)
-                    if shop?.official != true { RepLine(rep: u.rep, medal: u.badges?.first).padding(.bottom, 6) }
+                    if shop?.official == true {
+                        Text("Официальный аккаунт").font(.on(13, .bold)).foregroundStyle(T.accent)
+                            .padding(.horizontal, 11).frame(height: 28).background(Capsule().fill(T.accentSoft)).padding(.bottom, 6)
+                    } else { RepLine(rep: u.rep, medal: u.badges?.first).padding(.bottom, 6) }
                 }
                 .padding(.top, -42)
                 HStack(spacing: 6) {
@@ -104,8 +108,14 @@ struct UserView: View {
                 }
                 .padding(.top, 10)
                 Text(sub).font(.on(13.5)).foregroundStyle(T.muted).padding(.top, 3).fixedSize(horizontal: false, vertical: true)
+                // Описание магазина: три строки, «Читать полностью» — раскрыть.
                 if let about = shop?.about, !about.isEmpty {
-                    Text(about).font(.on(14.5)).foregroundStyle(T.text2).padding(.top, 10).fixedSize(horizontal: false, vertical: true)
+                    Text(about).font(.on(14.5)).foregroundStyle(T.text2).lineSpacing(2)
+                        .lineLimit(aboutOpen ? nil : 3).fixedSize(horizontal: false, vertical: true).padding(.top, 10)
+                    if about.count > 120 || about.contains("\n") {
+                        Button(aboutOpen ? "Свернуть" : "Читать полностью") { withAnimation(.easeOut(duration: 0.2)) { aboutOpen.toggle() } }
+                            .font(.on(14, .semibold)).foregroundStyle(T.accent).padding(.top, 4)
+                    }
                 }
                 HStack(spacing: 8) {
                     num(u.activeCount ?? items.count, Fmt.plural(u.activeCount ?? items.count, "объявление", "объявления", "объявлений"))

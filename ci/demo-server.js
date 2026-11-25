@@ -78,6 +78,8 @@ http.createServer((req, res) => {
       readUpTo: 3, typing: true, messages: msgs.filter((x) => x.id > after) });
   }
   m = /^\/api\/users\/(\d+)$/.exec(p);
+  if (m && m[1] === '3') return json(res, { user: { id: 3, name: 'Торгана', city: 'Санкт-Петербург', avatar: null, createdAt: now - 20 * 24 * H, activeCount: 0, emailVerified: true, rep: { level: 0, levelName: 'Новичок', deals: 0, newbie: true, tags: [], marks: [] }, badges: { official: true }, followers: 0, following: false, block: null,
+    shop: { official: true, name: 'Торгана', cover: null, about: 'Официальный аккаунт Торганы — площадки объявлений по всей России. Сторгуемся!\n\nРазмещать объявления — бесплатно и без лимитов, для частных лиц и для компаний. Каждое объявление проверяет модератор, а репутация продавца строится на подтверждённых сделках.\n\nЕсть вопрос или что-то пошло не так — напишите в «Поддержку Торганы» в «Сообщениях»: отвечают люди, а не бот.' } }, sections: [], pinned: [] });
   if (m) return json(res, { user: { ...listing(items[0]).seller, id: Number(m[1]), emailVerified: true, block: null }, sections: [], pinned: [] });
   if (p === '/api/pages/rules') return json(res, { title: 'Правила размещения', html: '<p>Все объявления на Торгане проходят модерацию. Объявление публикуется, если оно соответствует правилам.</p><h2>Запрещено</h2><ul><li>оружие и боеприпасы;</li><li>лекарства по рецепту;</li><li>поддельные товары.</li></ul><p>Подробнее — в <a href="/page/terms">пользовательском соглашении</a>.</p>' });
   if (p === '/api/support') return json(res, { messages: [] });

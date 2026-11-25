@@ -382,6 +382,15 @@ struct PageHeader: View {
     private var sep: some View { Text("›").foregroundStyle(T.faint) }
 }
 
+/// Заголовок страницы (h1 сайта на телефоне).
+struct PageTitle: View {
+    let text: String
+    var size: CGFloat = 28
+    var body: some View {
+        Text(text).font(.on(size, .heavy)).foregroundStyle(T.text).fixedSize(horizontal: false, vertical: true)
+    }
+}
+
 /// Круглая кнопка-значок (.icon-btn): 44, фон --surface.
 struct RoundIcon: View {
     let icon: String

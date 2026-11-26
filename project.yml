@@ -22,7 +22,9 @@ targets:
   Torgana:
     type: application
     platform: iOS
-    scheme: {}                           # общая схема Torgana — нужна для xcodebuild в GitHub Actions
+    scheme:                              # общая схема Torgana — нужна для xcodebuild в GitHub Actions
+      testTargets:
+        - TorganaTests
     sources:
       - path: Torgana
     settings:
@@ -35,3 +37,16 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         GENERATE_INFOPLIST_FILE: NO
+  # Тесты без сети: форматы, слой ошибок, разбор ответов сервера, свои адреса (TorganaTests/).
+  TorganaTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: TorganaTests
+    dependencies:
+      - target: Torgana
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ru.torgana.app.tests
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "1"

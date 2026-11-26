@@ -103,6 +103,12 @@ final class AppState: ObservableObject {
         if bad { Haptics.play("error") }
     }
 
+    /// Ошибка действия — плашкой; отмену (ушли с экрана) не показываем.
+    func fail(_ error: Error, _ fallback: String = "Не получилось") {
+        if Task.isCancelled || error.isCancellation { return }
+        show(error.userMessage(fallback), bad: true)
+    }
+
     func isFav(_ id: Int, _ fallback: Bool?) -> Bool { favs[id] ?? fallback ?? false }
 
     /// Гостю — шторка входа; после входа выполнится then.
@@ -136,7 +142,7 @@ final class AppState: ObservableObject {
             return r.fav
         } catch {
             favs[id] = current
-            show((error as? APIError)?.message ?? "Не получилось", bad: true)
+            fail(error)
             return current
         }
     }
@@ -158,7 +164,7 @@ final class AppState: ObservableObject {
             }
             Nav.shared.push(.chat(r.id))
         } catch {
-            show((error as? APIError)?.message ?? "Не получилось", bad: true)
+            fail(error)
         }
     }
 
@@ -175,7 +181,7 @@ final class AppState: ObservableObject {
             Haptics.play("light")
             return r
         } catch {
-            show((error as? APIError)?.message ?? "Не получилось", bad: true)
+            fail(error)
             return nil
         }
     }

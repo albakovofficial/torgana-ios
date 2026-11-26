@@ -201,4 +201,15 @@ enum Fmt {
         if let first = parts.first, let g = gen[first.lowercased()] { parts[0] = g }
         return parts.joined(separator: " ")
     }
+
+    /// «0:24», «1:00»
+    static func duration(_ s: Double) -> String {
+        let t = Int(s.rounded())
+        return "\(t / 60):" + String(format: "%02d", t % 60)
+    }
+
+    /// «234 КБ», «4,2 МБ»
+    static func bytes(_ n: Int) -> String {
+        n >= 1_048_576 ? String(format: "%.1f МБ", Double(n) / 1_048_576).replacingOccurrences(of: ".", with: ",") : "\(max(1, n / 1024)) КБ"
+    }
 }

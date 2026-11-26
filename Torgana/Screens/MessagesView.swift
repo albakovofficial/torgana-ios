@@ -143,7 +143,7 @@ struct MessagesView: View {
             let r: ConvList = try await API.shared.get("/api/conversations")
             items = r.items
             error = nil
-        } catch { self.error = (error as? APIError)?.message ?? error.localizedDescription }
+        } catch { self.error = error.userMessage() }
         loading = false
     }
 }

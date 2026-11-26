@@ -36,7 +36,7 @@ struct DocView: View {
                 let p: Page = try await API.shared.get("/api/pages/\(slug)")
                 title = p.title
                 text = DocView.attributed(p.html)
-            } catch { self.error = (error as? APIError)?.message ?? error.localizedDescription }
+            } catch { self.error = error.userMessage() }
         }
     }
 

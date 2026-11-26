@@ -68,6 +68,15 @@ jobs:
         if: failure()
         run: grep -E "error:" build.log | sort -u | head -80 || true
 
+      - name: Тесты
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project Torgana.xcodeproj -scheme Torgana -configuration Debug \
+            -destination "platform=iOS Simulator,id=$UDID" -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee test.log | grep -E "error:|Test Case .* (passed|failed)|Executed|TEST (SUCCEEDED|FAILED)" || true
+          grep -q "TEST SUCCEEDED" test.log
+
       - name: Снимки экранов (светлая и тёмная тема)
         run: |
           APP=$(ls -d build/Build/Products/Debug-iphonesimulator/*.app | head -1)

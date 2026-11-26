@@ -109,7 +109,7 @@ final class Feed: ObservableObject {
         } catch {
             guard g == gen else { return }
             if reset { items = [] }
-            self.error = (error as? APIError)?.message ?? error.localizedDescription
+            self.error = error.userMessage()
         }
     }
 }

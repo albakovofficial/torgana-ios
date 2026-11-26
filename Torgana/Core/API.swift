@@ -11,6 +11,14 @@ struct APIError: LocalizedError {
     static let offline = APIError(status: 0, message: "Нет связи с сервером. Проверьте интернет.")
 }
 
+// Один слой ошибок для всех экранов: что показать человеку и что молча пропустить.
+extension Error {
+    /// Текст для человека: ответ сервера или «нет связи» (APIError) — как есть, иначе — запасной текст места.
+    func userMessage(_ fallback: String = "Не получилось") -> String { (self as? APIError)?.message ?? fallback }
+    /// Отмена — ушли с экрана или начали заново: это не ошибка, показывать нечего.
+    var isCancellation: Bool { self is CancellationError || (self as? URLError)?.code == .cancelled }
+}
+
 final class API {
     static let shared = API()
     let base: URL

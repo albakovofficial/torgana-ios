@@ -42,7 +42,7 @@ struct FavoritesView: View {
             items = r.items
             error = nil
         } catch {
-            self.error = (error as? APIError)?.message ?? error.localizedDescription
+            self.error = error.userMessage()
         }
         loading = false
     }

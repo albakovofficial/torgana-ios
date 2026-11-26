@@ -165,7 +165,7 @@ struct LoginView: View {
                 return
             }
             await AuthButtons.signedIn()
-        } catch { self.error = (error as? APIError)?.message ?? "Нет связи с Торганой — попробуйте ещё раз" }
+        } catch { self.error = error.userMessage("Нет связи с Торганой — попробуйте ещё раз") }
     }
 
 }
@@ -326,7 +326,7 @@ private struct CodeStep: View {
             _ = try await API.shared.post("/api/auth/code", ["email": email, "code": code], as: JSONValue.self)
             await done()
         } catch {
-            app.show((error as? APIError)?.message ?? "Неверный код", bad: true)
+            app.fail(error, "Неверный код")
             code = ""
         }
     }
@@ -336,7 +336,7 @@ private struct CodeStep: View {
             _ = try await API.shared.post("/api/auth/code/resend", ["email": email], as: JSONValue.self)
             wait = 60
             app.show("Отправили новый код")
-        } catch { app.show((error as? APIError)?.message ?? "Не получилось", bad: true) }
+        } catch { app.fail(error) }
     }
 }
 
@@ -433,7 +433,7 @@ struct AuthButtons: View {
                     guard let s = r["url"]?.string, let u = URL(string: s) else { return }
                     await withCheckedContinuation { c in CookieSync.shared.share("tg_oauth") { c.resume() } }
                     oauthURL = OAuthLink(url: u)
-                } catch { app.show((error as? APIError)?.message ?? "Не получилось", bad: true) }
+                } catch { app.fail(error) }
             }
         } label: {
             icon().frame(maxWidth: .infinity).frame(height: 50).background(Capsule().fill(fill))
@@ -453,7 +453,7 @@ struct AuthButtons: View {
                 body["consent"] = .bool(true)
                 _ = try await API.shared.post("/api/auth/apple", body, as: JSONValue.self)
                 await Self.signedIn()
-            } catch { app.show((error as? APIError)?.message ?? "Не получилось войти", bad: true) }
+            } catch { app.fail(error, "Не получилось войти") }
         }
     }
 

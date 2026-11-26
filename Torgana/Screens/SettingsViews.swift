@@ -122,7 +122,7 @@ private struct ProfileEditForm: View {
             try await patchMe(["name": .string(name.trimmingCharacters(in: .whitespaces)), "city": .string(city), "phone": .string(phone)])
             Haptics.play("success")
             app.show("Сохранено")
-        } catch { app.show((error as? APIError)?.message ?? "Не получилось сохранить", bad: true) }
+        } catch { app.fail(error, "Не получилось сохранить") }
     }
 
     private func upload(_ item: PhotosPickerItem) async {
@@ -133,12 +133,12 @@ private struct ProfileEditForm: View {
             let file = try await Uploader.upload(img)
             try await patchMe(["avatar": .string(file)])
             app.show("Фото обновлено")
-        } catch { app.show((error as? APIError)?.message ?? "Не получилось загрузить фото", bad: true) }
+        } catch { app.fail(error, "Не получилось загрузить фото") }
     }
 
     private func removePhoto() async {
         do { try await patchMe(["avatar": .string("")]); app.show("Фото убрано") }
-        catch { app.show((error as? APIError)?.message ?? "Не получилось", bad: true) }
+        catch { app.fail(error) }
     }
 }
 
@@ -196,7 +196,7 @@ private struct NotifySettings: View {
     private func toggle(_ label: String, _ key: String) -> some View {
         Toggle(isOn: Binding(get: { value(key) }, set: { on in
             Task {
-                do { try await patchMe([key: .bool(on)]) } catch { app.show((error as? APIError)?.message ?? "Не получилось", bad: true) }
+                do { try await patchMe([key: .bool(on)]) } catch { app.fail(error) }
             }
         })) { Text(label).font(.on(14, .medium)).foregroundStyle(T.text2) }
         .toggleStyle(.switch)
@@ -279,7 +279,7 @@ private struct BlocksSettings: View {
 
     private func load() async {
         do { items = (try await API.shared.get("/api/blocks") as BlockList).items; error = nil }
-        catch is CancellationError {} catch { self.error = error.localizedDescription }
+        catch is CancellationError {} catch { self.error = error.userMessage() }
         loading = false
     }
 
@@ -288,7 +288,7 @@ private struct BlocksSettings: View {
             _ = try await API.shared.send("DELETE", "/api/blocks/\(u.id)", body: Optional<[String: String]>.none) as JSONValue
             items.removeAll { $0.id == u.id }
             app.show("Разблокирован")
-        } catch { app.show((error as? APIError)?.message ?? "Не получилось", bad: true) }
+        } catch { app.fail(error) }
     }
 }
 
@@ -342,6 +342,6 @@ private struct AccountSettings: View {
             await app.refreshMe()
             nav.open(path: "/")
             app.show(done)
-        } catch { app.show((error as? APIError)?.message ?? "Не получилось", bad: true) }
+        } catch { app.fail(error) }
     }
 }

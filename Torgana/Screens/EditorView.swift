@@ -520,7 +520,7 @@ struct EditorView: View {
             loadError = nil
             let l: Listing
             do { l = (try await API.shared.get("/api/listings/\(id)") as ListingResponse).listing } catch is CancellationError { return } catch {
-                loadError = error.localizedDescription
+                loadError = error.userMessage()
                 return
             }
             category = l.category ?? ""
@@ -561,7 +561,7 @@ struct EditorView: View {
                 if !aiTried, photos.first?.id == p.id { aiTried = true; Task { await suggest(file) } }
             } catch {
                 if let i = photos.firstIndex(where: { $0.id == p.id }) { photos[i].failed = true }
-                app.show((error as? APIError)?.message ?? "Фото не загрузилось", bad: true)
+                app.fail(error, "Фото не загрузилось")
             }
         }
     }
@@ -618,7 +618,7 @@ struct EditorView: View {
             }
             Haptics.play("success")
         } catch {
-            stepError = (error as? APIError)?.message ?? "Не получилось отправить"
+            stepError = error.userMessage("Не получилось отправить")
             Haptics.play("error")
         }
     }

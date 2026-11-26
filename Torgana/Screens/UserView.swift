@@ -92,7 +92,7 @@ struct UserView: View {
             user = r.user
             let page: ListingsPage = try await API.shared.get("/api/listings", query: ["user": String(id), "limit": "60"])
             items = page.items
-        } catch { self.error = (error as? APIError)?.message ?? error.localizedDescription }
+        } catch { self.error = error.userMessage() }
     }
 
     private func toggleBlock() async {
@@ -105,7 +105,7 @@ struct UserView: View {
                 user?.block = "me"
             }
             Haptics.play("success")
-        } catch { app.show((error as? APIError)?.message ?? "Не получилось", bad: true) }
+        } catch { app.fail(error) }
     }
 }
 

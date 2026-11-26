@@ -161,7 +161,7 @@ struct MainView: View {
         .alert("Включить уведомления?", isPresented: $push.ask) {
             Button("Включить") {
                 Task {
-                    do { try await push.turnOn(); app.show("Уведомления включены") } catch { app.show(error.localizedDescription, bad: true) }
+                    do { try await push.turnOn(); app.show("Уведомления включены") } catch { app.fail(error) }
                 }
             }
             Button("Не сейчас", role: .cancel) {}

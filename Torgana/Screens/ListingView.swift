@@ -58,7 +58,7 @@ struct ListingView: View {
             error = nil
             _ = try? await API.shared.post("/api/stats/view", ["id": id], as: JSONValue.self)
         } catch {
-            self.error = (error as? APIError)?.message ?? error.localizedDescription
+            self.error = error.userMessage()
         }
     }
 
@@ -582,7 +582,7 @@ struct ReportSheet: View {
             Haptics.play("success")
             dismiss()
         } catch {
-            app.show((error as? APIError)?.message ?? "Не получилось", bad: true)
+            app.fail(error)
         }
     }
 }

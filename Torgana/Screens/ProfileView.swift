@@ -152,7 +152,7 @@ final class MyListingsStore: ObservableObject {
 
     func load() async {
         do { items = (try await API.shared.get("/api/my/listings") as MyListings).items; error = nil }
-        catch is CancellationError {} catch { self.error = error.localizedDescription }
+        catch is CancellationError {} catch { self.error = error.userMessage() }
         loading = false
     }
 
@@ -173,7 +173,7 @@ final class MyListingsStore: ObservableObject {
             Haptics.play("success")
             AppState.shared.show(status == "sold" ? "Отмечено проданным" : status == "archived" ? "Снято с публикации" : "Снова опубликовано")
             await load()
-        } catch { AppState.shared.show((error as? APIError)?.message ?? "Не получилось", bad: true) }
+        } catch { AppState.shared.fail(error) }
     }
 }
 
@@ -366,7 +366,7 @@ struct NoticesView: View {
 
     private func load() async {
         do { items = (try await API.shared.get("/api/notices") as NoticeList).items; error = nil }
-        catch is CancellationError {} catch { self.error = error.localizedDescription }
+        catch is CancellationError {} catch { self.error = error.userMessage() }
         loading = false
     }
 }
@@ -428,7 +428,7 @@ struct PushCard: View {
     private func run(_ ok: String, _ work: @escaping () async throws -> Void) {
         busy = true
         Task {
-            do { try await work(); app.show(ok) } catch { app.show(error.localizedDescription, bad: true) }
+            do { try await work(); app.show(ok) } catch { app.fail(error) }
             await reload()
             busy = false
         }

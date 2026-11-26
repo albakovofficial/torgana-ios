@@ -80,7 +80,7 @@ final class AppState: ObservableObject {
         guard let r: MeResponse = try? await API.shared.get("/api/me") else { return }   // нет сети — профиль не трогаем
         if r.user == nil && CookieSync.shared.hasSession {
             // Сервер не узнал сессию (вышли на сайте, удалили профиль, истёк срок) — только тогда она стирается.
-            await withCheckedContinuation { c in CookieSync.shared.drop { c.resume() } }
+            await CookieSync.shared.drop()
         } else {
             CookieSync.shared.remember()
         }
@@ -193,7 +193,7 @@ final class AppState: ObservableObject {
         await PushManager.shared.forget()
         _ = try? await API.shared.post("/api/auth/logout")
         favs = [:]
-        await withCheckedContinuation { c in CookieSync.shared.drop { c.resume() } }
+        await CookieSync.shared.drop()
         if let id { Accounts.shared.forget(id) }
         await refreshMe()
         if let next = Accounts.shared.list.first { await Accounts.shared.switchTo(next) }
@@ -202,8 +202,9 @@ final class AppState: ObservableObject {
     /// Нужно войти — открывается экран входа.
 }
 
+// Число на значке приложения: непрочитанные сообщения и уведомления (из профиля и от страниц сайта).
 enum Badge {
     static func set(_ n: Int) {
-        UNUserNotificationCenter.current().setBadgeCount(max(0, n)) { _ in }
+        Task { try? await UNUserNotificationCenter.current().setBadgeCount(max(0, n)) }
     }
 }

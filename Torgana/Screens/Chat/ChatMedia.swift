@@ -18,7 +18,7 @@ enum Uploader {
     }
 
     /// Видео (до минуты и 100 МБ, MP4 или MOV) — как видео объявления: начать загрузку, потом частями по offset.
-    static func video(_ url: URL, progress: @escaping (Double) -> Void = { _ in }) async throws -> String {
+    static func video(_ url: URL, progress: @escaping @Sendable (Double) -> Void = { _ in }) async throws -> String {
         let data = try Data(contentsOf: url)
         let seconds = (try? await AVURLAsset(url: url).load(.duration).seconds) ?? 0
         let name = url.lastPathComponent.lowercased().hasSuffix(".mp4") ? "video.mp4" : "video.mov"
@@ -48,6 +48,17 @@ enum Uploader {
     /// Какие файлы можно выбрать (то же, что принимает сервер).
     static let fileTypes: [UTType] = [.pdf, .plainText, .commaSeparatedText, .rtf, .zip]
         + ["doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp"].compactMap { UTType(filenameExtension: $0) }
+}
+
+/// Кадр из начала видео (до 600 px) — обложка в ленте переписки и превью загрузки.
+enum VideoFrame {
+    static func poster(_ url: URL) async -> UIImage? {
+        let gen = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+        gen.appliesPreferredTrackTransform = true
+        gen.maximumSize = CGSize(width: 600, height: 600)
+        guard let cg = try? await gen.image(at: CMTime(seconds: 0.1, preferredTimescale: 600)).image else { return nil }
+        return UIImage(cgImage: cg)
+    }
 }
 
 /// Видео из «Фото»: система отдаёт копию файла, мы переносим её во временную папку.
@@ -84,11 +95,8 @@ struct VideoBubble: View {
         .contentShape(Rectangle())
         .onTapGesture { playing = true }
         .task(id: url) {
-            let gen = AVAssetImageGenerator(asset: AVURLAsset(url: url))
-            gen.appliesPreferredTrackTransform = true
-            gen.maximumSize = CGSize(width: 600, height: 600)
-            if let cg = try? await gen.image(at: CMTime(seconds: 0.1, preferredTimescale: 600)).image { poster = UIImage(cgImage: cg) }
-            if let d = try? await gen.asset.load(.duration).seconds, d.isFinite, d > 0 { seconds = d }
+            poster = await VideoFrame.poster(url)
+            if let d = try? await AVURLAsset(url: url).load(.duration).seconds, d.isFinite, d > 0 { seconds = d }
         }
         .fullScreenCover(isPresented: $playing) { VideoScreen(url: url) }
         .accessibilityLabel("Видео")

@@ -25,7 +25,8 @@ struct TorganaApp: App {
 }
 
 // Куда перейти: ссылка torgana.ru (из письма, мессенджера), нажатие на push, адрес torgana://…
-final class Router {
+// Только постоянный адрес сайта — можно звать с любого потока (Sendable).
+final class Router: Sendable {
     static let shared = Router()
 
     let baseURL: URL

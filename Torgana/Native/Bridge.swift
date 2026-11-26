@@ -1,9 +1,9 @@
 import UIKit
-import UserNotifications
 
 // Мост «сайт → приложение». Сайт зовёт window.TorganaApp.post({ type: '…', … }),
 // приложение отвечает событием window 'torgana-native' (e.detail). Полный список — в BRIDGE.md.
 // Сообщения принимаются только со страниц torgana.ru (проверка в WebController).
+@MainActor
 enum Bridge {
     static func handle(type: String, body: [String: Any]) {
         switch type {
@@ -14,7 +14,7 @@ enum Bridge {
         case "auth.apple":
             AppleSignIn.shared.start(nonce: body["nonce"] as? String)
         case "badge":
-            setBadge((body["count"] as? NSNumber)?.intValue ?? 0)
+            Badge.set((body["count"] as? NSNumber)?.intValue ?? 0)
         case "native.open":
             // Ссылка на странице сайта ведёт в раздел, который уже родной, — открываем его в приложении.
             if let path = body["path"] as? String { Task { @MainActor in Nav.shared.open(path: path) } }
@@ -59,19 +59,10 @@ enum Bridge {
         sheet.completionWithItemsHandler = { activity, completed, _, _ in done?(activity?.rawValue, completed) }
         top.present(sheet, animated: true)
     }
-
-    // Число на значке приложения (непрочитанные сообщения).
-    private static func setBadge(_ count: Int) {
-        let value = max(0, count)
-        if #available(iOS 17.0, *) {
-            UNUserNotificationCenter.current().setBadgeCount(value) { _ in }
-        } else {
-            UIApplication.shared.applicationIconBadgeNumber = value
-        }
-    }
 }
 
 // Виброотклик: лёгкий щелчок на кнопках, «успех» после публикации и т. п.
+@MainActor
 enum Haptics {
     static func play(_ style: String) {
         switch style {

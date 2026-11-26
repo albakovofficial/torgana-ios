@@ -136,16 +136,15 @@ extension View {
 }
 
 enum Fmt {
-    private static let num: NumberFormatter = {
+    /// «45 000»: разряды через неразрывный пробел. Форматтер — на вызов: общий нельзя делить между потоками.
+    static func number(_ n: Int) -> String {
         let f = NumberFormatter()
         f.numberStyle = .decimal
         f.groupingSeparator = "\u{00A0}"
         f.maximumFractionDigits = 0
         f.locale = Locale(identifier: "ru_RU")
-        return f
-    }()
-
-    static func number(_ n: Int) -> String { num.string(from: NSNumber(value: n)) ?? String(n) }
+        return f.string(from: NSNumber(value: n)) ?? String(n)
+    }
 
     /// «45 000 ₽», «35 000 ₽ / мес», «Цена не указана»
     static func price(_ value: Int?, unit: String? = nil) -> String {

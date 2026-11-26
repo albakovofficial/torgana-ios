@@ -4,18 +4,19 @@ import WebKit
 // Страницы сайта внутри приложения — для разделов, которые ещё не переписаны на Swift.
 // WebController — общее: настройки WKWebView, мост с сайтом (window.TorganaApp), правила переходов.
 // Каждый экран сайта — свой WKWebView (WebPage); куки общие (WKWebsiteDataStore.default), поэтому вход один на всё приложение.
+@MainActor
 final class WebController: NSObject {
     static let shared = WebController()
 
     /// Страница, которая последней писала приложению, — ей уходят ответы (push.status, auth.apple, share.result).
     weak var current: WKWebView?
 
-    static var appVersion: String {
+    nonisolated static var appVersion: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
     }
 
     // Вход через Яндекс ID и VK ID идёт внутри приложения — иначе вход сохранится в Safari, а не здесь.
-    static let authHosts = ["oauth.yandex.ru", "passport.yandex.ru", "id.vk.com", "oauth.vk.com", "login.vk.com", "vk.com", "id.vk.ru", "oauth.vk.ru", "vk.ru"]
+    nonisolated static let authHosts = ["oauth.yandex.ru", "passport.yandex.ru", "id.vk.com", "oauth.vk.com", "login.vk.com", "vk.com", "id.vk.ru", "oauth.vk.ru", "vk.ru"]
 
     private lazy var handler = WeakScriptHandler(self)
 
@@ -77,17 +78,15 @@ final class WebController: NSObject {
 
     // Сообщение сайту: window.addEventListener('torgana-native', e => e.detail).
     func send(_ payload: [String: Any]) {
-        DispatchQueue.main.async {
-            guard let web = self.current,
-                  JSONSerialization.isValidJSONObject(payload),
-                  let data = try? JSONSerialization.data(withJSONObject: payload),
-                  let json = String(data: data, encoding: .utf8) else { return }
-            web.evaluateJavaScript("window.dispatchEvent(new CustomEvent('torgana-native', { detail: \(json) }));", completionHandler: nil)
-        }
+        guard let web = current,
+              JSONSerialization.isValidJSONObject(payload),
+              let data = try? JSONSerialization.data(withJSONObject: payload),
+              let json = String(data: data, encoding: .utf8) else { return }
+        web.evaluateJavaScript("window.dispatchEvent(new CustomEvent('torgana-native', { detail: \(json) }));", completionHandler: nil)
     }
 
     static func openOutside(_ url: URL) {
-        DispatchQueue.main.async { UIApplication.shared.open(url) }
+        UIApplication.shared.open(url)
     }
 
     /// Сообщение пришло от самой страницы torgana.ru, а не от рамки внутри неё.
@@ -96,7 +95,7 @@ final class WebController: NSObject {
         return Router.shared.isInternal(url)
     }
 
-    static func isAuthHost(_ url: URL) -> Bool {
+    nonisolated static func isAuthHost(_ url: URL) -> Bool {
         guard let host = url.host?.lowercased() else { return false }
         return authHosts.contains { host == $0 || host.hasSuffix("." + $0) }
     }
@@ -126,6 +125,7 @@ extension WebController: WKScriptMessageHandler {
 }
 
 // WKUserContentController держит обработчик сильно — прослойка, чтобы не было цикла.
+@MainActor
 final class WeakScriptHandler: NSObject, WKScriptMessageHandler {
     private weak var target: WKScriptMessageHandler?
     init(_ target: WKScriptMessageHandler) { self.target = target }
@@ -135,6 +135,7 @@ final class WeakScriptHandler: NSObject, WKScriptMessageHandler {
 }
 
 // MARK: - Одна страница сайта
+@MainActor
 final class WebPage: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
     let web: WKWebView
     /// Заголовок раздела сайта — стоит рядом со стрелкой назад; на самой странице он спрятан.
@@ -156,9 +157,12 @@ final class WebPage: NSObject, ObservableObject, WKNavigationDelegate, WKUIDeleg
             content.add(WeakScriptHandler(self), name: "heading")
             content.addUserScript(WKUserScript(source: Self.headingScript, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
         }
+        // WebKit сообщает о смене адреса на главном потоке; путь обновляем следующим шагом, не посреди отрисовки.
         urlWatch = web.observe(\.url, options: [.new]) { [weak self] w, _ in
-            let p = w.url.map { $0.path + ($0.query.map { "?" + $0 } ?? "") } ?? ""
-            DispatchQueue.main.async { if self?.path != p { self?.path = p } }
+            MainActor.assumeIsolated {
+                let p = w.url.map { $0.path + ($0.query.map { "?" + $0 } ?? "") } ?? ""
+                Task { @MainActor in if self?.path != p { self?.path = p } }
+            }
         }
         load(path: path)
     }
@@ -205,7 +209,7 @@ final class WebPage: NSObject, ObservableObject, WKNavigationDelegate, WKUIDeleg
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         loading = false
         failed = false
-        CookieSync.shared.pullFromWeb()     // вошли или вышли на странице сайта — родные экраны узнают сразу
+        Task { await CookieSync.shared.pullFromWeb() }     // вошли или вышли на странице сайта — родные экраны узнают сразу
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { handle(error) }

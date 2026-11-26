@@ -6,9 +6,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = PushManager.shared
         // Уведомления уже разрешены — обновляем адрес устройства (Apple может его сменить).
-        UNUserNotificationCenter.current().getNotificationSettings { settings in
-            guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else { return }
-            DispatchQueue.main.async { application.registerForRemoteNotifications() }
+        Task {
+            if await PushManager.shared.permission() == .granted { application.registerForRemoteNotifications() }
         }
         return true
     }

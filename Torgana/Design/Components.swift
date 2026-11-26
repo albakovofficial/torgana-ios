@@ -2,7 +2,9 @@ import SwiftUI
 import UIKit
 
 // MARK: - Картинки с сервера: кэш в памяти + системный кэш URLSession.
-final class ImageCache {
+// Картинка грузится и раскодируется не на главном потоке. NSCache и URLSession сами безопасны для разных потоков,
+// других хранимых свойств нет — поэтому Sendable объявлен вручную (@unchecked).
+final class ImageCache: @unchecked Sendable {
     static let shared = ImageCache()
     private let memory = NSCache<NSURL, UIImage>()
     private let session: URLSession = {
@@ -12,7 +14,7 @@ final class ImageCache {
         return URLSession(configuration: cfg)
     }()
 
-    init() { memory.totalCostLimit = 80 << 20 }
+    private init() { memory.totalCostLimit = 80 << 20 }
 
     func cached(_ url: URL) -> UIImage? { memory.object(forKey: url as NSURL) }
 

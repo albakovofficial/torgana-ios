@@ -431,7 +431,7 @@ struct AuthButtons: View {
                 do {
                     let r: JSONValue = try await API.shared.post("/api/auth/oauth/\(provider)/start", OAuthStart(next: "/profile", consent: true, src: "ios"))
                     guard let s = r["url"]?.string, let u = URL(string: s) else { return }
-                    await withCheckedContinuation { c in CookieSync.shared.share("tg_oauth") { c.resume() } }
+                    await CookieSync.shared.share("tg_oauth")
                     oauthURL = OAuthLink(url: u)
                 } catch { app.fail(error) }
             }
@@ -443,25 +443,23 @@ struct AuthButtons: View {
 
     private func apple() async {
         guard await AppleSignIn.shared.prefetchNonce() else { app.show(APIError.offline.message, bad: true); return }
-        switch await AppleSignIn.shared.authorize() {
-        case .failure(let e):
-            if (e as? ASAuthorizationError)?.code != .canceled { app.show("Apple не подтвердил вход — попробуйте ещё раз", bad: true) }
-        case .success(let auth):
-            guard let p = AppleSignIn.shared.payload(auth) else { app.show("Apple не прислал данные для входа", bad: true); return }
-            do {
-                var body = p
-                body["consent"] = .bool(true)
-                _ = try await API.shared.post("/api/auth/apple", body, as: JSONValue.self)
-                await Self.signedIn()
-            } catch { app.fail(error, "Не получилось войти") }
+        var body: [String: JSONValue]
+        do { body = try await AppleSignIn.shared.authorize() } catch {
+            if (error as? ASAuthorizationError)?.code != .canceled { app.show(error.userMessage("Apple не подтвердил вход — попробуйте ещё раз"), bad: true) }
+            return
         }
+        do {
+            body["consent"] = .bool(true)
+            _ = try await API.shared.post("/api/auth/apple", body, as: JSONValue.self)
+            await Self.signedIn()
+        } catch { app.fail(error, "Не получилось войти") }
     }
 
     /// Вошли: сессия — страницам сайта и в Связку ключей, профиль — родным экранам.
     @MainActor
     static func signedIn() async {
         Haptics.play("success")
-        await withCheckedContinuation { c in CookieSync.shared.adoptNative { c.resume() } }
+        await CookieSync.shared.adoptNative()
         await AppState.shared.refreshMe()
     }
 }

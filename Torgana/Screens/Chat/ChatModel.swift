@@ -1,6 +1,5 @@
 import SwiftUI
 import PhotosUI
-import AVKit
 
 /// Переписка и сервер: опрос раз в 2,5 секунды, отправка текста и вложений (одна загрузка за раз, с отменой),
 /// правка своего сообщения, торг, блокировка. Экран (ChatView) только показывает это состояние и передаёт действия.
@@ -158,10 +157,7 @@ final class ChatModel: ObservableObject {
                 return
             }
             defer { try? FileManager.default.removeItem(at: movie.url) }
-            let gen = AVAssetImageGenerator(asset: AVURLAsset(url: movie.url))
-            gen.appliesPreferredTrackTransform = true
-            gen.maximumSize = CGSize(width: 600, height: 600)
-            let poster = (try? await gen.image(at: CMTime(seconds: 0.1, preferredTimescale: 600)).image).map { UIImage(cgImage: $0) }
+            let poster = await VideoFrame.poster(movie.url)
             pending = PendingUpload(kind: .video, preview: poster, progress: 0, note: "Загружается · 0%")
             do {
                 let file = try await Uploader.video(movie.url) { p in

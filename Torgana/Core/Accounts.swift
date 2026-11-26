@@ -77,7 +77,7 @@ final class Accounts: ObservableObject {
     }
 
     private func use(_ a: Saved) async {
-        await withCheckedContinuation { c in CookieSync.shared.use(a.sid, expires: a.exp) { c.resume() } }
+        await CookieSync.shared.use(a.sid, expires: a.exp)
         AppState.shared.favs = [:]
         await AppState.shared.refreshMe()
     }
@@ -86,7 +86,7 @@ final class Accounts: ObservableObject {
     func startAdding() async {
         let app = AppState.shared
         addingFrom = app.me?.id
-        await withCheckedContinuation { c in CookieSync.shared.drop { c.resume() } }
+        await CookieSync.shared.drop()
         app.favs = [:]
         await app.refreshMe()
         app.ask = AppState.LoginAsk(title: "Добавить аккаунт", text: "Войдите в другой профиль — переключаться можно одним касанием")

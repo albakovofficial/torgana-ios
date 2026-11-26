@@ -19,11 +19,12 @@ extension Error {
     var isCancellation: Bool { self is CancellationError || (self as? URLError)?.code == .cancelled }
 }
 
-final class API {
+// Без изменяемого состояния — один на всё приложение, с любого потока (Sendable).
+final class API: Sendable {
     static let shared = API()
     let base: URL
     private let session: URLSession
-    private let decoder = JSONDecoder()
+    private var decoder: JSONDecoder { JSONDecoder() }
 
     private init() {
         base = Router.shared.baseURL
@@ -167,11 +168,12 @@ enum JSONValue: Codable, Hashable {
 // Выход решает только сервер: /api/me ответил «никто не вошёл» при нашей куке — или вы сами нажали «Выйти».
 // Пустое хранилище кук WKWebView ничего не значит: при холодном запуске оно бывает пустым, пока WebKit не прочитал
 // диск, — раньше это принималось за выход, и через пару часов (iOS выгрузила приложение) приходилось входить заново.
+@MainActor
 final class CookieSync: NSObject, WKHTTPCookieStoreObserver {
     static let shared = CookieSync()
     private var store: WKHTTPCookieStore { WKWebsiteDataStore.default().httpCookieStore }
     private var lastSid: String?
-    var onChange: (() -> Void)?
+    var onChange: (@MainActor () -> Void)?
 
     private let name = "tg_sid"
     private var host: String { Router.shared.baseURL.host ?? "torgana.ru" }
@@ -185,41 +187,42 @@ final class CookieSync: NSObject, WKHTTPCookieStoreObserver {
     func start() {
         if sid == nil, let saved = SessionVault.load(host: host) { HTTPCookieStorage.shared.setCookie(saved) }
         store.add(self)
-        if sid != nil { adoptNative { self.pullFromWeb() } } else { pullFromWeb() }
-    }
-
-    /// Страница сайта вошла (или вошла другим профилем) — забираем её сессию. Нет куки у сайта — спрашиваем сервер.
-    func pullFromWeb() {
-        store.getAllCookies { cookies in
-            DispatchQueue.main.async {
-                guard !self.adopting else { return }
-                guard let web = cookies.first(where: { $0.name == self.name && self.ours($0) && !$0.value.isEmpty }) else {
-                    if self.lastSid != nil { self.onChange?() }   // вышли на странице сайта? проверит /api/me
-                    return
-                }
-                guard web.value != self.lastSid else { return }
-                HTTPCookieStorage.shared.setCookie(web)
-                SessionVault.save(web)
-                self.lastSid = web.value
-                self.onChange?()
-            }
+        Task {
+            if sid != nil { await adoptNative() }
+            await pullFromWeb()
         }
     }
 
+    /// Страница сайта вошла (или вошла другим профилем) — забираем её сессию. Нет куки у сайта — спрашиваем сервер.
+    func pullFromWeb() async {
+        let cookies = await store.allCookies()
+        guard !adopting else { return }
+        guard let web = cookies.first(where: { $0.name == name && ours($0) && !$0.value.isEmpty }) else {
+            if lastSid != nil { onChange?() }   // вышли на странице сайта? проверит /api/me
+            return
+        }
+        guard web.value != lastSid else { return }
+        HTTPCookieStorage.shared.setCookie(web)
+        SessionVault.save(web)
+        lastSid = web.value
+        onChange?()
+    }
+
     /// Вошли в родном экране: сессия (её поставил ответ сервера) — в Связку ключей и страницам сайта.
-    func adoptNative(completion: (() -> Void)? = nil) {
-        guard let c = sid else { completion?(); return }
+    func adoptNative() async {
+        guard let c = sid else { return }
         SessionVault.save(c)
         lastSid = c.value
         adopting = true
-        store.setCookie(c) { DispatchQueue.main.async { self.adopting = false; completion?() } }
+        await store.setCookie(c)
+        adopting = false
     }
 
     /// Вход через Яндекс или VK начат родным запросом, а закончится на странице: кука начала входа нужна и ей,
     /// иначе сервер не примет возврат от сервиса (вход привязан к тому, кто его начал).
-    func share(_ cookie: String, completion: @escaping () -> Void) {
-        guard let c = (HTTPCookieStorage.shared.cookies ?? []).first(where: { $0.name == cookie && ours($0) }) else { completion(); return }
-        store.setCookie(c) { DispatchQueue.main.async { completion() } }
+    func share(_ cookie: String) async {
+        guard let c = (HTTPCookieStorage.shared.cookies ?? []).first(where: { $0.name == cookie && ours($0) }) else { return }
+        await store.setCookie(c)
     }
 
     /// Ответ сервера продлил сессию (1.59.3: Set-Cookie на /api/me) — запомнить новый срок.
@@ -232,27 +235,25 @@ final class CookieSync: NSObject, WKHTTPCookieStoreObserver {
     }
 
     /// Переключиться на сохранённый аккаунт: его сессия — родным экранам, страницам сайта и в Связку ключей.
-    func use(_ value: String, expires: Double, completion: @escaping () -> Void) {
-        drop {
-            guard let c = SessionVault.cookie(value, expires: expires, host: self.host) else { completion(); return }
-            HTTPCookieStorage.shared.setCookie(c)
-            self.adoptNative(completion: completion)
-        }
+    func use(_ value: String, expires: Double) async {
+        await drop()
+        guard let c = SessionVault.cookie(value, expires: expires, host: host) else { return }
+        HTTPCookieStorage.shared.setCookie(c)
+        await adoptNative()
     }
 
     /// Выход: «Выйти», удаление профиля или сервер не узнал сессию.
-    func drop(completion: (() -> Void)? = nil) {
+    func drop() async {
         for c in HTTPCookieStorage.shared.cookies ?? [] where c.name == name && ours(c) { HTTPCookieStorage.shared.deleteCookie(c) }
         SessionVault.clear()
         lastSid = nil
-        store.getAllCookies { web in
-            let group = DispatchGroup()
-            for c in web where c.name == self.name && self.ours(c) { group.enter(); self.store.delete(c) { group.leave() } }
-            group.notify(queue: .main) { completion?() }
-        }
+        for c in await store.allCookies() where c.name == name && ours(c) { await store.deleteCookie(c) }
     }
 
-    func cookiesDidChange(in cookieStore: WKHTTPCookieStore) { pullFromWeb() }
+    // WebKit сообщает об изменении кук на главном потоке.
+    nonisolated func cookiesDidChange(in cookieStore: WKHTTPCookieStore) {
+        Task { @MainActor in await self.pullFromWeb() }
+    }
 }
 
 /// Запись в Связке ключей (только этот iPhone, после первой разблокировки): текущая сессия и сохранённые аккаунты.

@@ -169,9 +169,7 @@ extension PushManager: UNUserNotificationCenterDelegate {
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
                                             withCompletionHandler completionHandler: @escaping () -> Void) {
         if let link = response.notification.request.content.userInfo["url"] as? String, !link.isEmpty {
-            DispatchQueue.main.async {
-                if let url = URL(string: link), url.scheme != nil { Router.shared.open(url) } else { Router.shared.open(path: link) }
-            }
+            if let url = URL(string: link), url.scheme != nil { Router.shared.open(url) } else { Router.shared.open(path: link) }
         }
         completionHandler()
     }

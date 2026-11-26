@@ -50,8 +50,8 @@ struct AccountSheet: View {
                         Text(a.name).font(.on(16, .bold)).foregroundStyle(T.text).lineLimit(1)
                         if a.verified == true { Verified(size: 15) }
                     }
-                    Text(a.expired == true ? "вход истёк — войти снова" : current ? "\(a.email ?? "") · сейчас" : a.email ?? "")
-                        .font(.on(13)).foregroundStyle(a.expired == true ? T.danger : T.muted).lineLimit(1)
+                    Text(current ? "\(a.email ?? "") · сейчас" : a.email ?? "")
+                        .font(.on(13)).foregroundStyle(T.muted).lineLimit(1)
                 }
                 Spacer(minLength: 6)
                 if current {

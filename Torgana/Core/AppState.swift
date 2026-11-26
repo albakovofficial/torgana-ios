@@ -78,8 +78,11 @@ final class AppState: ObservableObject {
 
     func refreshMe() async {
         guard let r: MeResponse = try? await API.shared.get("/api/me") else { return }   // нет сети — профиль не трогаем
+        var lost: Int?
         if r.user == nil && CookieSync.shared.hasSession {
-            // Сервер не узнал сессию (вышли на сайте, удалили профиль, истёк срок) — только тогда она стирается.
+            // Сервер не узнал сессию (вышли на сайте, удалили профиль навсегда или временно, истёк срок) — только тогда
+            // она стирается, а аккаунт уходит из списка (ниже, Accounts.lost).
+            lost = Accounts.shared.owner(sid: CookieSync.shared.current?.value) ?? me?.id
             await CookieSync.shared.drop()
         } else {
             CookieSync.shared.remember()
@@ -96,6 +99,7 @@ final class AppState: ObservableObject {
         notices = r.notices ?? 0
         if city.isEmpty, let c = r.user?.city, !c.isEmpty { city = c }
         Badge.set(unread + notices)
+        if let lost { await Accounts.shared.lost(lost) }   // есть другие сохранённые аккаунты — сразу в следующий
     }
 
     func show(_ text: String, bad: Bool = false) {
@@ -194,9 +198,8 @@ final class AppState: ObservableObject {
         _ = try? await API.shared.post("/api/auth/logout")
         favs = [:]
         await CookieSync.shared.drop()
-        if let id { Accounts.shared.forget(id) }
         await refreshMe()
-        if let next = Accounts.shared.list.first { await Accounts.shared.switchTo(next) }
+        if let id { await Accounts.shared.lost(id) }
     }
 
     /// Нужно войти — открывается экран входа.

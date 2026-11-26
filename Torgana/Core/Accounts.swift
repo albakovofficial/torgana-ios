@@ -4,6 +4,8 @@ import Foundation
 // Сессия каждого вошедшего аккаунта хранится в Связке ключей; переключение — без пароля: его сессия становится
 // текущей (родные экраны, страницы сайта). «Добавить аккаунт» не выходит из текущего на сервере — к нему можно
 // вернуться. Непрочитанные у остальных — запросом /api/me с их сессией, не трогая текущую.
+// Аккаунт, которого больше нет (вышли, удалили профиль навсегда или временно, вход истёк), сразу убирается из списка,
+// а приложение переходит в следующий сохранённый — без повторного входа (lost).
 @MainActor
 final class Accounts: ObservableObject {
     static let shared = Accounts()
@@ -16,8 +18,6 @@ final class Accounts: ObservableObject {
         var verified: Bool?
         var sid: String
         var exp: Double
-        /// Сервер больше не узнаёт сессию — нужно войти снова.
-        var expired: Bool?
     }
 
     @Published private(set) var list: [Saved] = []
@@ -50,28 +50,34 @@ final class Accounts: ObservableObject {
         addingFrom = nil
     }
 
-    /// Убрать из списка (вышли из аккаунта).
+    /// Убрать из списка («Убрать из списка» в шторке).
     func forget(_ id: Int) {
         list.removeAll { $0.id == id }
         unread[id] = nil
         save()
     }
 
-    /// Переключиться: сессия аккаунта — текущая. Не узнал сервер — вернуться в прежний и попросить войти снова.
+    /// Чей это вход: аккаунт с этой сессией (по ней, а не по профилю на экране — при переключении это разные аккаунты).
+    func owner(sid: String?) -> Int? { sid.flatMap { s in list.first { $0.sid == s }?.id } }
+
+    /// Аккаунта больше нет — убрать из списка; если сейчас ни в одном аккаунте — сразу в следующий сохранённый.
+    func lost(_ id: Int) async {
+        forget(id)
+        guard AppState.shared.me == nil, let next = list.first else { return }
+        await switchTo(next)
+    }
+
+    /// Переключиться: сессия аккаунта — текущая. Сервер её не узнал — аккаунт убирается (refreshMe → lost).
     func switchTo(_ a: Saved) async {
         let app = AppState.shared
         guard a.id != app.me?.id else { return }
-        if a.expired == true { await startAdding(); return }
-        let from = app.me.flatMap { m in list.first { $0.id == m.id } }
         await use(a)
         if app.me?.id == a.id {
             Nav.shared.paths = [:]
             Haptics.play("success")
             app.show("Вы в аккаунте «\(a.name)»")
         } else {
-            mark(a.id, expired: true)
-            if let from { await use(from) }
-            app.show("Вход в «\(a.name)» истёк — войдите снова", bad: true)
+            app.show("Аккаунта «\(a.name)» больше нет — он убран из списка", bad: true)
         }
         await refreshUnread()
     }
@@ -99,22 +105,16 @@ final class Accounts: ObservableObject {
         await use(a)
     }
 
-    private func mark(_ id: Int, expired: Bool) {
-        guard let i = list.firstIndex(where: { $0.id == id }) else { return }
-        list[i].expired = expired
-        save()
-    }
-
-    /// Непрочитанные остальных аккаунтов; продлённую сервером сессию — запомнить, неузнанную — отметить.
+    /// Непрочитанные остальных аккаунтов; продлённую сервером сессию — запомнить, неузнанную — убрать из списка.
     func refreshUnread() async {
         struct R: Decodable { let user: Me?; let unread: Int?; let notices: Int? }
-        for a in others where a.expired != true {
+        for a in others {
             var req = URLRequest(url: API.shared.url("/api/me"))
             req.setValue("tg_sid=\(a.sid)", forHTTPHeaderField: "Cookie")
             req.setValue("application/json", forHTTPHeaderField: "Accept")
             req.setValue("TorganaApp/\(WebController.appVersion) (iOS; native)", forHTTPHeaderField: "User-Agent")
             guard let (data, resp) = try? await Self.session.data(for: req), let r = try? JSONDecoder().decode(R.self, from: data) else { continue }
-            if r.user == nil { mark(a.id, expired: true); continue }
+            if r.user == nil { forget(a.id); continue }   // вышли, удалили профиль или вход истёк
             unread[a.id] = (r.unread ?? 0) + (r.notices ?? 0)
             if let h = resp as? HTTPURLResponse, let url = h.url,
                let c = HTTPCookie.cookies(withResponseHeaderFields: h.allHeaderFields as? [String: String] ?? [:], for: url).first(where: { $0.name == "tg_sid" }),
@@ -134,7 +134,7 @@ final class Accounts: ObservableObject {
             list.append(Saved(id: me.id, name: me.name, avatar: me.avatar, email: me.email, verified: false, sid: "demo", exp: Date().timeIntervalSince1970 + 86400))
         }
         list += [Saved(id: 90, name: "ALBAKOV", avatar: nil, email: "shop@albakov.ru", verified: true, sid: "demo", exp: Date().timeIntervalSince1970 + 86400),
-                 Saved(id: 91, name: "Мария", avatar: nil, email: "maria@mail.ru", verified: false, sid: "demo", exp: Date().timeIntervalSince1970 + 86400, expired: true)]
+                 Saved(id: 91, name: "Мария", avatar: nil, email: "maria@mail.ru", verified: false, sid: "demo", exp: Date().timeIntervalSince1970 + 86400)]
         unread[90] = 3
     }
     #endif

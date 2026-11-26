@@ -3,17 +3,17 @@ import PhotosUI
 
 // Настройки — родные экраны (запросы те же, что у страницы настроек сайта: PATCH /api/me, /api/blocks, /api/me/erase…).
 // «Пароль и вход» пока открывается разделом сайта (привязка Яндекса и VK); «Для бизнеса» — BusinessViews.swift.
+// 27.11 (вариант A): всё о самом профиле — фото, имя, телефон, почта, вход и удаление — один экран «Профиль».
 enum SettingsSection: String, Hashable {
-    case profile, notify, look, blocks, account
+    case profile, notify, look, blocks
 
     /// Якорь раздела на странице настроек сайта.
     init?(hash: String) {
         switch hash {
-        case "sf": self = .profile
+        case "sf", "s-acc": self = .profile
         case "sn": self = .notify
         case "s-look": self = .look
         case "s-block": self = .blocks
-        case "s-acc": self = .account
         default: return nil
         }
     }
@@ -24,7 +24,6 @@ enum SettingsSection: String, Hashable {
         case .notify: return "Уведомления"
         case .look: return "Оформление"
         case .blocks: return "Чёрный список"
-        case .account: return "Аккаунт"
         }
     }
 }
@@ -41,7 +40,6 @@ struct SettingsScreen: View {
                 case .notify: NotifySettings()
                 case .look: LookSettings()
                 case .blocks: BlocksSettings()
-                case .account: AccountSettings()
                 }
             }
             .padding(.horizontal, 20)
@@ -59,68 +57,132 @@ private func patchMe(_ body: [String: JSONValue]) async throws {
     if let u = r.user { AppState.shared.me = u }
 }
 
-// MARK: - Профиль: фото, имя, город, телефон
+// MARK: - Профиль: фото, имя, телефон; почта и вход; удаление (правило Apple 5.1.1(v) — удалить можно в самом приложении)
 
 private struct ProfileEditForm: View {
     @EnvironmentObject private var app: AppState
+    @EnvironmentObject private var nav: Nav
     @State private var name = ""
-    @State private var city = ""
     @State private var phone = ""
     @State private var photo: PhotosPickerItem?
     @State private var uploading = false
     @State private var saving = false
-    @State private var cityPicker = false
+    @State private var askOff = false
+    @State private var askErase = false
+    @State private var word = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            HStack(spacing: 16) {
-                Avatar(name: app.me?.name ?? "", url: app.me?.avatar, size: 84)
-                    .overlay { if uploading { ProgressView().tint(.white).frame(width: 84, height: 84).background(Circle().fill(.black.opacity(0.35))) } }
-                VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 0) {
+            // Фото по центру: камера на аватарке и две кнопки под ним.
+            VStack(spacing: 14) {
+                let me = (name: app.me?.name ?? "", avatar: app.me?.avatar, busy: uploading)   // подпись PhotosPicker — @Sendable
+                PhotosPicker(selection: $photo, matching: .images) {
+                    Avatar(name: me.name, url: me.avatar, size: 112)
+                        .overlay { if me.busy { ProgressView().tint(.white).frame(width: 112, height: 112).background(Circle().fill(.black.opacity(0.35))) } }
+                        .overlay(alignment: .bottomTrailing) {
+                            Image(systemName: "camera.fill").font(.system(size: 14, weight: .semibold)).foregroundStyle(T.text)
+                                .frame(width: 36, height: 36).background(Circle().fill(T.card)).shadow(color: Color(hex: 0x161A2B).opacity(0.18), radius: 6, y: 3)
+                        }
+                }
+                .accessibilityLabel(app.me?.avatar == nil ? "Добавить фото" : "Сменить фото")
+                HStack(spacing: 8) {
                     let pick = app.me?.avatar == nil ? "Добавить фото" : "Сменить фото"   // подпись PhotosPicker — @Sendable
                     PhotosPicker(selection: $photo, matching: .images) {
-                        Label(pick, systemImage: "camera")
-                            .font(.on(15, .semibold)).foregroundStyle(T.accent)
+                        Label(pick, systemImage: "camera").font(.on(14.5, .semibold)).foregroundStyle(T.accent)
+                            .padding(.horizontal, 15).frame(height: 38).background(Capsule().fill(T.accentSoft))
                     }
                     if app.me?.avatar != nil {
-                        Button("Убрать фото") { Task { await removePhoto() } }.font(.on(14, .medium)).foregroundStyle(T.danger).buttonStyle(.plain)
+                        Button { Task { await removePhoto() } } label: {
+                            Label("Убрать", systemImage: "trash").font(.on(14.5, .semibold)).foregroundStyle(T.text2)
+                                .padding(.horizontal, 15).frame(height: 38).background(Capsule().fill(T.surface))
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }
-            LabeledField(label: "Имя") { TextField("Как к вам обращаться", text: $name).textContentType(.name).modifier(InputBox()) }
-            LabeledField(label: "Город") {
-                Button { cityPicker = true } label: {
-                    HStack {
-                        Text(city.isEmpty ? "Выберите город" : city).foregroundStyle(city.isEmpty ? T.faint : T.text)
-                        Spacer()
-                        Image(systemName: "chevron.down").font(.system(size: 13, weight: .semibold)).foregroundStyle(T.muted)
-                    }
-                    .modifier(InputBox())
+            .frame(maxWidth: .infinity)
+            group("Профиль") {
+                VStack(spacing: 0) {
+                    field("Имя") { TextField("Как к вам обращаться", text: $name).textContentType(.name) }
+                    T.line.opacity(0.6).frame(height: 1).padding(.leading, 16)
+                    field("Телефон") { TextField("+7 900 000-00-00", text: $phone).keyboardType(.phonePad).textContentType(.telephoneNumber) }
                 }
-                .buttonStyle(.plain)
+                .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(T.card))
+                .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(T.line, lineWidth: 1))
+                Text("Телефон виден только вам и модераторам — покупателям его не показываем.").font(.on(12.5)).foregroundStyle(T.muted).padding(.horizontal, 8).padding(.top, 8)
+                Button { Task { await save() } } label: { if saving { ProgressView().tint(.white) } else { Text("Сохранить") } }
+                    .buttonStyle(TButton(kind: .accent, height: 50))
+                    .disabled(saving || !changed || name.trimmingCharacters(in: .whitespaces).count < 2)
+                    .padding(.top, 14)
             }
-            LabeledField(label: "Телефон") {
-                TextField("+7 900 000-00-00", text: $phone).keyboardType(.phonePad).textContentType(.telephoneNumber).modifier(InputBox())
+            group("Вход") {
+                SettingsGroup {
+                    // Почта — только показать (без стрелки: менять её негде, нажимать нечего).
+                    HStack(spacing: 12) {
+                        Image(systemName: "envelope.fill").font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
+                            .frame(width: 32, height: 32).background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Tint.violet))
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(app.me?.email ?? "Почта не указана").font(.on(15.5, .medium)).foregroundStyle(T.text).lineLimit(1).minimumScaleFactor(0.8)
+                            Text(app.me?.emailVerified == true ? "Почта для входа · подтверждена" : "Почта для входа · не подтверждена").font(.on(12.5)).foregroundStyle(T.muted)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 14).frame(minHeight: 60)
+                    .overlay(alignment: .bottom) { T.line.opacity(0.6).frame(height: 1).padding(.leading, 58) }
+                    SettingsRow(icon: "key.fill", color: Tint.sky, title: "Пароль и вход", sub: "Apple, Яндекс, VK", last: true) { nav.push(.web("/profile/settings#sp")) }
+                }
             }
-            Text("Телефон виден только вам и модераторам — покупателям его не показываем.").font(.on(13)).foregroundStyle(T.muted)
-            Button { Task { await save() } } label: { if saving { ProgressView().tint(.white) } else { Text("Сохранить") } }
-                .buttonStyle(TButton(kind: .accent, height: 52))
-                .disabled(saving || name.trimmingCharacters(in: .whitespaces).isEmpty)
+            group("Удаление профиля") {
+                SettingsGroup {
+                    SettingsRow(icon: "pause.fill", color: Tint.gray, title: "Удалить временно", sub: "Профиль и объявления скроются; вернуться — просто войти") { askOff = true }
+                    SettingsRow(icon: "trash.fill", color: Tint.red, title: "Удалить навсегда", sub: "Объявления, фото, избранное — без восстановления", last: true) { askErase = true }
+                }
+            }
         }
         // Профиль может прийти с сервера позже, чем открылся экран, — заполнить поля, как только он есть.
         .onChange(of: app.me?.id, initial: true) { _, _ in
             guard let me = app.me, name.isEmpty else { return }
-            name = me.name; city = me.city ?? ""; phone = me.phone ?? ""
+            name = me.name; phone = me.phone ?? ""
         }
         .onChange(of: photo) { _, item in if let item { Task { await upload(item) } } }
-        .sheet(isPresented: $cityPicker) { OptionPicker(title: "Город", options: app.config?.cities ?? [], value: $city) }
+        .confirmationDialog("Удалить профиль временно?", isPresented: $askOff, titleVisibility: .visible) {
+            Button("Удалить временно", role: .destructive) { Task { await run("/api/me/deactivate", [:], "Профиль удалён временно. Чтобы вернуться — просто войдите") } }
+        } message: { Text("Профиль и объявления скроются, вы выйдете на всех устройствах. Вернуться можно в любой момент: просто войдите.") }
+        .alert("Удалить профиль навсегда?", isPresented: $askErase) {
+            TextField("Напишите УДАЛИТЬ", text: $word)
+            Button("Удалить навсегда", role: .destructive) {
+                let w = word.trimmingCharacters(in: .whitespaces)
+                word = ""
+                guard w.uppercased() == "УДАЛИТЬ" else { app.show("Чтобы удалить, напишите слово УДАЛИТЬ", bad: true); return }
+                Task { await run("/api/me/erase", ["confirm": w], "Профиль удалён") }
+            }
+            Button("Отмена", role: .cancel) { word = "" }
+        } message: { Text("Объявления, фото, избранное, подписки и данные профиля удалятся. Восстановить их будет нельзя.") }
+    }
+
+    private var changed: Bool { name != (app.me?.name ?? "") || phone != (app.me?.phone ?? "") }
+
+    private func group<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(title.uppercased()).font(.on(12, .bold)).tracking(0.8).foregroundStyle(T.faint).padding(.horizontal, 8).padding(.bottom, 8)
+            content()
+        }
+        .padding(.top, 24)
+    }
+
+    private func field<C: View>(_ label: String, @ViewBuilder _ input: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label).font(.on(12.5, .semibold)).foregroundStyle(T.muted)
+            input().font(.on(16.5)).foregroundStyle(T.text)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10)
     }
 
     private func save() async {
         saving = true
         defer { saving = false }
         do {
-            try await patchMe(["name": .string(name.trimmingCharacters(in: .whitespaces)), "city": .string(city), "phone": .string(phone)])
+            try await patchMe(["name": .string(name.trimmingCharacters(in: .whitespaces)), "phone": .string(phone)])
             Haptics.play("success")
             app.show("Сохранено")
         } catch { app.fail(error, "Не получилось сохранить") }
@@ -140,6 +202,17 @@ private struct ProfileEditForm: View {
     private func removePhoto() async {
         do { try await patchMe(["avatar": .string("")]); app.show("Фото убрано") }
         catch { app.fail(error) }
+    }
+
+    /// Удаление: сервер выходит на всех устройствах — аккаунт уходит из списка, приложение переходит в следующий (Accounts.lost).
+    private func run(_ path: String, _ body: [String: String], _ done: String) async {
+        do {
+            _ = try await API.shared.post(path, body, as: JSONValue.self)
+            await PushManager.shared.forget()
+            await app.refreshMe()
+            if app.me == nil { nav.open(path: "/") }
+            app.show(done)
+        } catch { app.fail(error) }
     }
 }
 
@@ -293,56 +366,3 @@ private struct BlocksSettings: View {
     }
 }
 
-// MARK: - Аккаунт: почта, удаление профиля (правило Apple 5.1.1(v) — удалить можно в самом приложении)
-
-private struct AccountSettings: View {
-    @EnvironmentObject private var app: AppState
-    @EnvironmentObject private var nav: Nav
-    @State private var askOff = false
-    @State private var askErase = false
-    @State private var word = ""
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            SettingsGroup {
-                HStack(spacing: 12) {
-                    Image(systemName: "envelope.fill").font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
-                        .frame(width: 32, height: 32).background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Tint.violet))
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(app.me?.email ?? "Почта не указана").font(.on(15.5, .medium)).foregroundStyle(T.text)
-                        Text(app.me?.emailVerified == true ? "Подтверждена" : "Не подтверждена").font(.on(12.5)).foregroundStyle(app.me?.emailVerified == true ? T.good : T.muted)
-                    }
-                    Spacer()
-                }
-                .padding(.horizontal, 14).frame(minHeight: 60)
-            }
-            SettingsGroup(title: "Удаление профиля") {
-                SettingsRow(icon: "pause.fill", color: Tint.gray, title: "Удалить временно", sub: "Профиль и объявления скроются; вернуться — просто войти") { askOff = true }
-                SettingsRow(icon: "trash.fill", color: Tint.red, title: "Удалить навсегда", sub: "Объявления, фото, избранное — без восстановления", last: true) { askErase = true }
-            }
-        }
-        .confirmationDialog("Удалить профиль временно?", isPresented: $askOff, titleVisibility: .visible) {
-            Button("Удалить временно", role: .destructive) { Task { await run("/api/me/deactivate", [:], "Профиль удалён временно. Чтобы вернуться — просто войдите") } }
-        } message: { Text("Профиль и объявления скроются, вы выйдете на всех устройствах. Вернуться можно в любой момент: просто войдите.") }
-        .alert("Удалить профиль навсегда?", isPresented: $askErase) {
-            TextField("Напишите УДАЛИТЬ", text: $word)
-            Button("Удалить навсегда", role: .destructive) {
-                let w = word.trimmingCharacters(in: .whitespaces)
-                word = ""
-                guard w.uppercased() == "УДАЛИТЬ" else { app.show("Чтобы удалить, напишите слово УДАЛИТЬ", bad: true); return }
-                Task { await run("/api/me/erase", ["confirm": w], "Профиль удалён") }
-            }
-            Button("Отмена", role: .cancel) { word = "" }
-        } message: { Text("Объявления, фото, избранное, подписки и данные профиля удалятся. Восстановить их будет нельзя.") }
-    }
-
-    private func run(_ path: String, _ body: [String: String], _ done: String) async {
-        do {
-            _ = try await API.shared.post(path, body, as: JSONValue.self)
-            await PushManager.shared.forget()
-            await app.refreshMe()
-            nav.open(path: "/")
-            app.show(done)
-        } catch { app.fail(error) }
-    }
-}

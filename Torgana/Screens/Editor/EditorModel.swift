@@ -146,7 +146,7 @@ final class EditorModel: ObservableObject {
                         delivery: delivery, bargain: bargain, exchange: exchange, status: nil, views: nil, favCount: nil,
                         createdAt: Date().timeIntervalSince1970 * 1000, updatedAt: nil, photos: photos.map { $0.url?.absoluteString ?? "" },
                         isFav: nil, isOwner: true, specs: specs, rejectReason: nil, attrs: nil)
-        let seller = app.me.map { Seller(id: $0.id, name: $0.name, city: $0.city, avatar: $0.avatar, createdAt: $0.createdAt, activeCount: nil,
+        let seller = app.me.map { Seller(id: $0.id, name: $0.name, avatar: $0.avatar, activeCount: nil,
                                          rep: $0.rep, badges: $0.badges, followers: nil, following: nil) }
         return ListingResponse(listing: l, seller: seller, similar: nil)
     }
@@ -216,7 +216,7 @@ final class EditorModel: ObservableObject {
 
     func prefill() async {
         guard !loaded else { return }
-        if city.isEmpty { city = app.city.isEmpty ? (app.me?.city ?? "") : app.city }
+        if city.isEmpty { city = app.city }
         if let id = editId {
             loadError = nil
             let l: Listing

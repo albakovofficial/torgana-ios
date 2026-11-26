@@ -10,7 +10,6 @@ enum Route: Hashable {
     case notices
     case edit(Int)
     case user(Int)
-    case doc(String)
     case web(String)
     case settings(SettingsSection)
     case business(BizSection)
@@ -24,7 +23,6 @@ enum Route: Hashable {
         if path == "/messages/support" { return .support }
         if let m = path.firstMatch(of: #/^\/edit\/(\d+)/#), let id = Int(m.1) { return .edit(id) }
         if let m = path.firstMatch(of: #/^\/u\/(\d+)/#), let id = Int(m.1) { return .user(id) }
-        if let m = path.firstMatch(of: #/^\/page\/(rules|terms|privacy|consent|contacts)$/#) { return .doc(String(m.1)) }
         if let m = path.firstMatch(of: #/^\/messages\/(\d+)/#), let id = Int(m.1) { return .chat(id) }
         if path == "/search" { return .search(SearchQuery(params: items)) }
         if let m = path.firstMatch(of: #/^\/c\/([a-z]+)(?:\/([a-z0-9_-]+))?/#) {
@@ -152,6 +150,8 @@ struct MainView: View {
         .modifier(ToastHost())
         .sheet(item: $app.ask, onDismiss: { app.loginClosed() }) { LoginSheet(ask: $0) }
         .sheet(isPresented: $app.accountsOpen) { AccountSheet() }
+        .sheet(isPresented: $app.menuOpen) { SiteMenu().presentationDetents([.medium, .large]).presentationDragIndicator(.visible) }
+        .overlay { LogoutCard() }
         .fullScreenCover(item: Binding(get: { app.loginFull.map(LoginFull.init) }, set: { app.loginFull = $0?.mode }),
                          onDismiss: { app.loginClosed() }) { f in NavigationStack { LoginView(start: f.mode) } }
         // Ссылка или push открыли раздел, а профиля нет — на главную и шторка входа.
@@ -194,7 +194,6 @@ struct RouteView: View {
         case .notices: NoticesView()
         case .edit(let id): EditorView(editId: id).hidesTabBar()
         case .user(let id): UserView(id: id)
-        case .doc(let slug): DocView(slug: slug)
         case .web(let path): WebScreen(path: path)
         case .settings(let s): SettingsScreen(section: s)
         case .business(let s): BusinessScreen(section: s)
@@ -234,7 +233,12 @@ struct TabBar: View {
             item(.messages, "message", "Сообщения", badge: app.unread)
             Spacer(minLength: 2)
             item(.profile, "person", "Профиль")
-                .contextMenu { if app.me != nil { AccountMenu() } }   // долгое нажатие — переключить аккаунт
+                // Долгое нажатие — шторка «Аккаунты» (та же, что по имени в профиле; решение 27.11, вариант A).
+                .simultaneousGesture(LongPressGesture(minimumDuration: 0.45).onEnded { _ in
+                    guard app.me != nil else { return }
+                    Haptics.play("medium")
+                    app.accountsOpen = true
+                })
         }
         .padding(.horizontal, 8)
         .frame(height: 64)

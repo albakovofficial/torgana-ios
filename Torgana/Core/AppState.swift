@@ -26,8 +26,11 @@ final class AppState: ObservableObject {
     /// Что сделать сразу после входа (открыть вкладку, написать продавцу, добавить в избранное).
     private var pending: (@MainActor () async -> Void)?
     @Published var toast: Toast?
-    /// Шторка «Аккаунты» (нажали на своё имя в профиле).
+    /// Шторка «Аккаунты» (нажали на своё имя в профиле или долго держали вкладку «Профиль»).
     @Published var accountsOpen = false
+    /// Меню из шапки (≡) и карточка «Выйти из профиля?» (решение 27.11, вариант B) — одни на всё приложение.
+    @Published var menuOpen = false
+    @Published var askLogout = false
 
     struct Toast: Equatable { let text: String; let bad: Bool; let id = UUID() }
 
@@ -48,6 +51,12 @@ final class AppState: ObservableObject {
                     Accounts.shared.seedDemo()
                     Nav.shared.tab = .profile
                     accountsOpen = true
+                }
+            } else if r == "/menu" || r == "/logout" {
+                Task {
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    Nav.shared.tab = .profile
+                    if r == "/menu" { menuOpen = true } else { askLogout = true }
                 }
             } else if r == "/login" || r == "/register" || r == "/ask" {
                 // окно входа — когда профиль уже загружен (иначе его загрузка закроет окно)
@@ -97,7 +106,6 @@ final class AppState: ObservableObject {
         if changed { Task { await PushManager.shared.sync(); await PushManager.shared.askOnce() } }
         unread = r.unread ?? 0
         notices = r.notices ?? 0
-        if city.isEmpty, let c = r.user?.city, !c.isEmpty { city = c }
         Badge.set(unread + notices)
         if let lost { await Accounts.shared.lost(lost) }   // есть другие сохранённые аккаунты — сразу в следующий
     }

@@ -186,21 +186,6 @@ enum Fmt {
         return many
     }
 
-    /// «На Торгане с ноября 2026»
-    static func monthYear(_ ms: Double?) -> String {
-        guard let ms else { return "" }
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "ru_RU")
-        f.dateFormat = "LLLL yyyy"
-        let s = f.string(from: Date(timeIntervalSince1970: ms / 1000))
-        // «ноябрь 2026» → «ноября 2026»
-        let gen = ["январь": "января", "февраль": "февраля", "март": "марта", "апрель": "апреля", "май": "мая", "июнь": "июня",
-                   "июль": "июля", "август": "августа", "сентябрь": "сентября", "октябрь": "октября", "ноябрь": "ноября", "декабрь": "декабря"]
-        var parts = s.split(separator: " ").map(String.init)
-        if let first = parts.first, let g = gen[first.lowercased()] { parts[0] = g }
-        return parts.joined(separator: " ")
-    }
-
     /// «0:24», «1:00»
     static func duration(_ s: Double) -> String {
         let t = Int(s.rounded())

@@ -149,9 +149,10 @@ struct WritePicker: View {
 
 // MARK: - Карточка продавца: страница продавца и свой профиль (витрина)
 
-/// Обложка (у магазина — своя, у остальных — фирменный градиент), аватарка поверх, имя с галочкой, город, срок на Торгане,
-/// скорость ответа, уровень, описание магазина («Читать полностью»), три числа и кнопки (actions).
-/// Своя (own): камера на аватарке и шестерёнка на обложке ведут в настройки профиля; иначе на обложке — «Поделиться».
+/// Обложка — только у магазина (своя или фирменный градиент; решение 27.11, вариант C): без тарифа шапки нет, аватарка сверху,
+/// а в своём профиле — строка «Обложка и витрина — с тарифом «Магазин»». Дальше имя с галочкой, скорость ответа, уровень,
+/// описание магазина («Читать полностью»), три числа и кнопки (actions). Города и «на Торгане с» нет нигде (решение 27.11).
+/// Своя (own): камера на аватарке и шестерёнка ведут в настройки профиля; иначе — «Поделиться».
 struct SellerCard<Actions: View>: View {
     @EnvironmentObject private var app: AppState
     let user: PublicUser
@@ -164,27 +165,21 @@ struct SellerCard<Actions: View>: View {
     var body: some View {
         let u = user
         let shop = u.shop
-        let sub = [u.city, u.createdAt.map { "на Торгане с \(Fmt.monthYear($0))" },
-                   u.rep?.replyText.map { "отвечает \($0)" }]
-            .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+        let sub = u.rep?.replyText.map { "Отвечает \($0)" } ?? ""
         VStack(alignment: .leading, spacing: 0) {
-            ZStack(alignment: .topTrailing) {
-                if let cover = API.shared.media(shop?.cover) {
-                    RemoteImage(url: cover)
-                } else {
-                    AuthGradient().overlay(alignment: .topTrailing) {
-                        Circle().fill(.white.opacity(0.1)).frame(width: 170, height: 170).offset(x: 40, y: -70)
+            if shop != nil {
+                ZStack(alignment: .topTrailing) {
+                    if let cover = API.shared.media(shop?.cover) {
+                        RemoteImage(url: cover)
+                    } else {
+                        AuthGradient().overlay(alignment: .topTrailing) {
+                            Circle().fill(.white.opacity(0.1)).frame(width: 170, height: 170).offset(x: 40, y: -70)
+                        }
                     }
+                    corner(dark: true).padding(.top, 18).padding(.trailing, 14)
                 }
-                if own {
-                    Button { nav.push(.settings(.profile)) } label: { coverIcon("gearshape") }
-                        .buttonStyle(.plain).accessibilityLabel("Настройки профиля").padding(12)
-                } else {
-                    ShareLink(item: API.shared.url("/u/\(u.id)"), subject: Text(u.name)) { coverIcon("square.and.arrow.up") }
-                        .accessibilityLabel("Поделиться").padding(12)
-                }
+                .frame(height: 100).frame(maxWidth: .infinity).clipped()
             }
-            .frame(height: 100).frame(maxWidth: .infinity).clipped()
             VStack(alignment: .leading, spacing: 0) {
                 Button { if own { nav.push(.settings(.profile)) } } label: {
                     Avatar(name: u.name, url: u.avatar, size: 84)
@@ -200,7 +195,9 @@ struct SellerCard<Actions: View>: View {
                 .buttonStyle(.plain)
                 .disabled(!own)
                 .accessibilityLabel(own ? "Сменить фото профиля" : u.name)
-                .padding(.top, -42)
+                .padding(.top, shop != nil ? -42 : 18)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .overlay(alignment: .topTrailing) { if shop == nil { corner(dark: false).padding(.top, 16) } }
                 // Своё имя — кнопка: шторка «Аккаунты» (переключить или добавить).
                 Button { app.accountsOpen = true } label: {
                     HStack(spacing: 6) {
@@ -213,7 +210,7 @@ struct SellerCard<Actions: View>: View {
                 .disabled(!own)
                 .accessibilityHint(own ? "Переключить аккаунт" : "")
                 .padding(.top, 10)
-                Text(sub).font(.on(13.5)).foregroundStyle(T.muted).padding(.top, 3).fixedSize(horizontal: false, vertical: true)
+                if !sub.isEmpty { Text(sub).font(.on(13.5)).foregroundStyle(T.muted).padding(.top, 3).fixedSize(horizontal: false, vertical: true) }
                 Group {
                     if shop?.official == true {
                         Text("Официальный аккаунт").font(.on(13, .bold)).foregroundStyle(T.accent)
@@ -238,6 +235,20 @@ struct SellerCard<Actions: View>: View {
                     Button { nav.push(.business(.shop)) } label: { Label("Добавить описание магазина", systemImage: "plus") }
                         .font(.on(14, .semibold)).foregroundStyle(T.accent).buttonStyle(.plain).padding(.top, 10)
                 }
+                // Своя страница без тарифа: обложка и витрина закрыты — откроются с тарифом «Магазин».
+                if own && shop == nil {
+                    Button { nav.push(.business(.hub)) } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "lock.fill").font(.system(size: 14, weight: .semibold)).foregroundStyle(T.muted)
+                            Text("Обложка и витрина — с тарифом «Магазин»").font(.on(13.5)).foregroundStyle(T.text2)
+                                .frame(maxWidth: .infinity, alignment: .leading).fixedSize(horizontal: false, vertical: true)
+                            Text("Подробнее").font(.on(13.5, .bold)).foregroundStyle(T.accent)
+                        }
+                        .padding(.horizontal, 14).padding(.vertical, 11)
+                        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(T.surface))
+                    }
+                    .buttonStyle(.plain).padding(.top, 14)
+                }
                 HStack(spacing: 8) {
                     let ads = u.activeCount ?? count
                     num(ads, Fmt.plural(ads, "объявление", "объявления", "объявлений"))
@@ -258,9 +269,17 @@ struct SellerCard<Actions: View>: View {
         .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).strokeBorder(T.line, lineWidth: 1))
     }
 
-    private func coverIcon(_ name: String) -> some View {
-        Image(systemName: name).font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
-            .frame(width: 38, height: 38).background(Circle().fill(.black.opacity(0.18)))
+    /// Кнопка в углу: своя — шестерёнка (настройки профиля), чужая — «Поделиться». На обложке — белая на тёмном, без обложки — на сером.
+    @ViewBuilder private func corner(dark: Bool) -> some View {
+        let icon = { (name: String) in
+            Image(systemName: name).font(.system(size: 16, weight: .semibold)).foregroundStyle(dark ? .white : T.text)
+                .frame(width: 40, height: 40).background(Circle().fill(dark ? Color.black.opacity(0.18) : T.surface))
+        }
+        if own {
+            Button { nav.push(.settings(.profile)) } label: { icon("gearshape") }.buttonStyle(.plain).accessibilityLabel("Настройки профиля")
+        } else {
+            ShareLink(item: API.shared.url("/u/\(user.id)"), subject: Text(user.name)) { icon("square.and.arrow.up") }.accessibilityLabel("Поделиться")
+        }
     }
 
     private func num(_ n: Int, _ label: String) -> some View {

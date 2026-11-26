@@ -28,7 +28,6 @@ struct SiteBackground: View {
 struct SiteHeader: View {
     @EnvironmentObject private var app: AppState
     @EnvironmentObject private var nav: Nav
-    @State private var menu = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -53,7 +52,7 @@ struct SiteHeader: View {
                 .accessibilityLabel("Уведомления")
                 .padding(.trailing, 8)
             }
-            Button { menu = true } label: {
+            Button { app.menuOpen = true } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "line.3.horizontal").font(.system(size: 16, weight: .semibold)).foregroundStyle(T.text)
                     if let me = app.me {
@@ -74,7 +73,6 @@ struct SiteHeader: View {
         .padding(.horizontal, 20)
         .frame(height: 64)
         .background(T.glass.opacity(0.92).background(.ultraThinMaterial).ignoresSafeArea(edges: .top))
-        .sheet(isPresented: $menu) { SiteMenu().presentationDetents([.medium, .large]).presentationDragIndicator(.visible) }
     }
 }
 
@@ -117,6 +115,11 @@ struct SiteMenu: View {
                         .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(T.surface))
                     }
                     .buttonStyle(.plain)
+                    // Под профилем — «Сменить аккаунт» и «Выйти» (решение 27.11, вариант B).
+                    HStack(spacing: 8) {
+                        pill("Сменить аккаунт", "arrow.left.arrow.right", T.text) { then { app.accountsOpen = true } }
+                        pill("Выйти", "rectangle.portrait.and.arrow.right", T.danger) { then { app.askLogout = true } }
+                    }
                 } else {
                     Button("Войти или зарегистрироваться") { dismiss(); app.requireLogin(Tab.profile.loginAsk) }.buttonStyle(TButton(kind: .dark))
                 }
@@ -132,6 +135,72 @@ struct SiteMenu: View {
     }
 
     private func go(_ path: String) { dismiss(); nav.open(path: path) }
+
+    /// Закрыть меню и, когда шторка уехала, открыть следующее окно (две шторки сразу iPhone не покажет).
+    private func then(_ open: @escaping @MainActor () -> Void) {
+        dismiss()
+        Task { @MainActor in try? await Task.sleep(nanoseconds: 450_000_000); open() }
+    }
+
+    private func pill(_ title: String, _ icon: String, _ color: Color, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: icon).font(.on(14.5, .semibold)).foregroundStyle(color).lineLimit(1).minimumScaleFactor(0.85)
+                .frame(maxWidth: .infinity).frame(height: 48)
+                .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(T.card))
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(T.line, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// «Выйти из профиля?» — карточка над нижним краем (решение 27.11, вариант B): одна на всё приложение, открывается app.askLogout.
+struct LogoutCard: View {
+    @EnvironmentObject private var app: AppState
+
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            if app.askLogout {
+                Color.black.opacity(0.32).ignoresSafeArea()
+                    .onTapGesture { close() }
+                    .transition(.opacity)
+                VStack(spacing: 0) {
+                    Image(systemName: "rectangle.portrait.and.arrow.right").font(.system(size: 24, weight: .semibold)).foregroundStyle(T.danger)
+                        .frame(width: 60, height: 60).background(Circle().fill(T.danger.opacity(0.12)))
+                    Text("Выйти из профиля?").font(.on(21, .heavy)).foregroundStyle(T.text).padding(.top, 14)
+                    Text(sub).font(.on(14.5)).foregroundStyle(T.muted).multilineTextAlignment(.center).padding(.top, 6)
+                    HStack(spacing: 10) {
+                        Button { close() } label: {
+                            Text("Отмена").font(.on(16, .semibold)).foregroundStyle(T.text).frame(maxWidth: .infinity).frame(height: 54)
+                                .background(Capsule().fill(T.surface))
+                        }
+                        Button {
+                            close()
+                            Task { await app.logout() }
+                        } label: {
+                            Text("Выйти").font(.on(16, .semibold)).foregroundStyle(.white).frame(maxWidth: .infinity).frame(height: 54)
+                                .background(Capsule().fill(Color(hex: 0xD93A2F)))
+                        }
+                    }
+                    .buttonStyle(.plain).padding(.top, 20)
+                }
+                .padding(.horizontal, 20).padding(.top, 26).padding(.bottom, 20)
+                .frame(maxWidth: 520)
+                .background(RoundedRectangle(cornerRadius: 36, style: .continuous).fill(T.card))
+                .shadow(color: .black.opacity(0.25), radius: 30, y: 12)
+                .padding(.horizontal, 12).padding(.bottom, 10)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.spring(response: 0.35, dampingFraction: 0.86), value: app.askLogout)
+    }
+
+    /// Если на iPhone есть другие аккаунты — говорим, куда перейдём.
+    private var sub: String {
+        if let next = Accounts.shared.list.first(where: { $0.id != app.me?.id }) { return "Вы выйдете на этом iPhone и перейдёте в «\(next.name)»" }
+        return "Вы выйдете только на этом iPhone"
+    }
+
+    private func close() { app.askLogout = false }
 }
 
 /// Группа строк, как в «Настройках» iPhone: белая карточка с обводкой, скругление 20, тонкие разделители.

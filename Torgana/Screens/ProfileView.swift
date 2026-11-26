@@ -10,7 +10,6 @@ struct ProfileView: View {
     @StateObject private var store = MyListingsStore()
     @State private var pub: PublicUser?
     @State private var admin: AdminStats?
-    @State private var confirmLogout = false
     @State private var tab = "ads"
 
     var body: some View {
@@ -39,9 +38,6 @@ struct ProfileView: View {
         .sitePage()
         .refreshable { await app.refreshMe(); await reload() }
         .task(id: app.me?.id) { await reload() }
-        .confirmationDialog("Выйти из профиля?", isPresented: $confirmLogout, titleVisibility: .visible) {
-            Button("Выйти", role: .destructive) { Task { await app.logout() } }
-        }
     }
 
     private func reload() async {
@@ -80,21 +76,19 @@ struct ProfileView: View {
                 SettingsRow(icon: "person.2.fill", color: Tint.violet, title: "Подписки", sub: "Продавцы и новинки", last: true) { nav.push(.web("/profile/following")) }
             }
             SettingsGroup(title: "Настройки") {
-                SettingsRow(icon: "person.fill", color: Tint.blue, title: "Профиль", sub: "Фото, имя, город, телефон") { nav.push(.settings(.profile)) }
+                SettingsRow(icon: "person.fill", color: Tint.blue, title: "Профиль", sub: "Фото, имя, телефон, почта и вход") { nav.push(.settings(.profile)) }
                 SettingsRow(icon: "bell.fill", color: Tint.red, title: "Уведомления", sub: "Push на этом iPhone и письма") { nav.push(.settings(.notify)) }
-                SettingsRow(icon: "lock.fill", color: Tint.sky, title: "Пароль и вход", sub: "Почта, Apple, Яндекс, VK") { nav.push(.web("/profile/settings#sp")) }
                 SettingsRow(icon: "moon.fill", color: Tint.indigo, title: "Оформление", sub: LookSettings.title) { nav.push(.settings(.look)) }
                 SettingsRow(icon: "nosign", color: Tint.gray, title: "Чёрный список", sub: "Кому нельзя вам писать") { nav.push(.settings(.blocks)) }
-                SettingsRow(icon: "briefcase.fill", color: Tint.orange, title: "Для бизнеса", sub: "Витрина, статистика, значок «ИП проверен»") { nav.push(.business(.hub)) }
-                SettingsRow(icon: "envelope.fill", color: Tint.violet, title: "Аккаунт", sub: me.email ?? "", last: true) { nav.push(.settings(.account)) }
+                SettingsRow(icon: "briefcase.fill", color: Tint.orange, title: "Для бизнеса", sub: "Витрина, статистика, значок «ИП проверен»", last: true) { nav.push(.business(.hub)) }
             }
             SettingsGroup(title: "Помощь") {
                 SettingsRow(icon: "headphones", color: Tint.green, title: "Поддержка", sub: "Отвечают люди, а не боты") { nav.push(.support) }
                 SettingsRow(icon: "questionmark", color: Tint.sky, title: "Помощь и безопасность") { nav.push(.web("/page/help")) }
-                SettingsRow(icon: "doc.text", color: Tint.gray, title: "Правила и документы", last: true) { nav.push(.doc("rules")) }
+                SettingsRow(icon: "doc.text", color: Tint.gray, title: "Правила и документы", last: true) { nav.push(.web("/page/rules")) }
             }
             VStack(spacing: 12) {
-                Button { confirmLogout = true } label: {
+                Button { app.askLogout = true } label: {
                     Label("Выйти", systemImage: "rectangle.portrait.and.arrow.right")
                         .font(.on(16, .semibold)).foregroundStyle(T.danger)
                         .frame(maxWidth: .infinity).frame(height: 50)

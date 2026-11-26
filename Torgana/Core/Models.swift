@@ -105,10 +105,8 @@ struct Me: Codable, Hashable {
     let id: Int
     let name: String
     let email: String?
-    let city: String?
     let avatar: String?
     let isAdmin: Bool?
-    let createdAt: Double?
     let rep: Rep?
     let badges: Badges?
     let deactivatedAt: Double?
@@ -253,9 +251,7 @@ struct Listing: Codable, Identifiable, Hashable {
 struct Seller: Codable, Hashable {
     let id: Int
     let name: String
-    let city: String?
     let avatar: String?
-    let createdAt: Double?
     let activeCount: Int?
     let rep: Rep?
     let badges: Badges?
@@ -414,9 +410,7 @@ struct NoticeList: Codable { let items: [Notice]; let unread: Int? }
 struct PublicUser: Codable, Hashable {
     let id: Int
     let name: String
-    let city: String?
     let avatar: String?
-    let createdAt: Double?
     let activeCount: Int?
     let rep: Rep?
     let badges: Badges?

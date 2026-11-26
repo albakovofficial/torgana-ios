@@ -262,7 +262,7 @@ struct EditorSendStep: View {
             }
             .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(T.card))
             .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(T.line, lineWidth: 1))
-            Button { nav.push(.doc("rules")) } label: {
+            Button { nav.push(.web("/page/rules")) } label: {
                 (Text("Проверка модератором — обычно пара часов. Публикуя, вы принимаете ") + Text("правила").foregroundColor(T.accent))
                     .font(.on(12.5)).foregroundStyle(T.muted).multilineTextAlignment(.center)
             }

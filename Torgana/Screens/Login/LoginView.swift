@@ -32,7 +32,7 @@ struct LoginView: View {
         }
         .toolbar(.hidden, for: .navigationBar)
         .sheet(item: Binding(get: { doc.map(DocLink.init) }, set: { doc = $0?.slug })) { d in
-            NavigationStack { DocView(slug: d.slug) }
+            NavigationStack { WebScreen(path: "/page/\(d.slug)", title: DocLink.titles[d.slug] ?? "Документ", closeOnLogin: true) }
         }
         .onChange(of: app.me?.id) { _, id in if id != nil { dismiss() } }
         .onAppear { mode = start }
@@ -169,7 +169,12 @@ struct LoginView: View {
 
 }
 
-private struct DocLink: Identifiable { let slug: String; var id: String { slug } }
+private struct DocLink: Identifiable {
+    let slug: String
+    var id: String { slug }
+    /// Документ — страница сайта (вариант A, решение 27.11) в окне поверх входа.
+    static let titles = ["terms": "Соглашение", "privacy": "Конфиденциальность", "consent": "Согласие на обработку данных", "rules": "Правила", "contacts": "Реквизиты и контакты"]
+}
 
 // MARK: - Поле с значком: подсветка при вводе, «глазок» у пароля
 

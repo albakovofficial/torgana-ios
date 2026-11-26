@@ -91,6 +91,20 @@
 Общие действия — `AppState.openChat(listingId:offer:)`, `follow`, `logout`. Сборка зелёная; снимки — ветка `shots`.
 Светлая серия снимков в CI иногда пустая (медленный симулятор) — тёмная показательна.
 
+## Проверка кода (26 ноября, план «Проверка и чистка кода Торганы»)
+- **Swift 6** (`SWIFT_VERSION: 6.0`, строгая проверка потоков): CI падает при любом предупреждении в коде (шаг «Предупреждения Swift»).
+  Экраны и всё, что трогает UIKit/WebKit, — `@MainActor` (`WebController`, `WebPage`, `CookieSync`, `Bridge`, `Haptics`, `AppleSignIn`);
+  `API` и `Router` — `Sendable` (без изменяемого состояния); `ImageCache` — `@unchecked Sendable` (NSCache и URLSession сами потокобезопасны).
+  Колбэки делегатов Apple (вход с Apple, уведомления, куки WebKit) — `nonisolated` и `MainActor.assumeIsolated`/`Task { @MainActor }`.
+  Сессия (`CookieSync`) — async вместо колбэков: `await drop()`, `use(_:expires:)`, `adoptNative()`, `share(_:)`, `pullFromWeb()`.
+  Обработчики WebKit с ответом (`decidePolicyFor`, `confirm`) — тип как в SDK (`@MainActor @Sendable`), иначе WebKit их молча не вызывает.
+- **Один слой ошибок**: `error.userMessage(запасной текст)`, `error.isCancellation`, `AppState.fail(error, текст)` — отмену не показывает.
+- **Экраны по частям**: `Screens/Chat/` (`ChatModel` — данные и действия, `ChatView`, `ChatOffers`, `ChatParts`, `ChatMedia`),
+  `Screens/Business/` (7 файлов), `Screens/Editor/` (`EditorModel`, `EditorView`, `EditorSteps` — три шага), `Screens/Login/`
+  (`LoginView`, `AuthButtons` — кнопки входа и шторка), `Screens/Listing/` (`ListingView`, `ListingParts`, `Gallery`, `ReportSheet`),
+  `Design/FlowLayout.swift`. Ни один файл не больше 500 строк.
+- **Тесты** (`TorganaTests/`, `xcodebuild test` в CI перед снимками): форматы, слой ошибок, разбор сообщений, свои адреса и вход Яндекс/VK.
+
 ## Что осталось
 1. Довести сборку до зелёной, проверить снимки всех экранов (светлая/тёмная), поправить вид.
 2. Ещё страницы сайта внутри (`.web`): настройки профиля (`/profile/settings` — уведомления, телефон, пароль, удаление аккаунта,

@@ -736,14 +736,7 @@ private struct StatsView: View {
             Text(title).font(.on(12.5)).foregroundStyle(T.muted)
             Text(Fmt.number(n)).font(.on(22, .heavy)).foregroundStyle(T.text)
             if let prev {
-                let up = n > prev, same = n == prev
-                HStack(spacing: 2) {
-                    Image(systemName: same ? "arrow.right" : up ? "arrow.up" : "arrow.down").font(.system(size: 11, weight: .heavy))
-                    Text(same ? "0%" : prev > 0 ? "\(abs(Int(((Double(n) - Double(prev)) / Double(prev) * 100).rounded())))%" : "новое").font(.on(12.5, .heavy))
-                }
-                .foregroundStyle(same ? T.muted : up ? T.good : T.danger)
-                .padding(.leading, 6).padding(.trailing, 8).frame(height: 22)
-                .background(Capsule().fill(same ? T.surface : up ? T.goodSoft : T.dangerSoft))
+                TrendBadge(now: n, was: prev)
                 Text("было \(Fmt.number(prev)) \(Self.past[days] ?? "раньше")").font(.on(11.5)).foregroundStyle(T.muted).lineLimit(2).fixedSize(horizontal: false, vertical: true)
             } else {
                 Text("активных сейчас").font(.on(11.5)).foregroundStyle(T.muted)
@@ -857,5 +850,30 @@ private struct PaymentList: View {
         case "canceled": return RowStatus(text: "Не оплачен", tone: .off)
         default: return RowStatus(text: "Ошибка", tone: .bad)
         }
+    }
+}
+
+/// Стрелка вверх (зелёная), вниз (красная) или вправо (без изменений) и процент к прошлому периоду.
+private struct TrendBadge: View {
+    let now: Int
+    let was: Int
+
+    private var tone: RowStatus.Tone { now == was ? .off : now > was ? .ok : .bad }
+    private var icon: String { now == was ? "arrow.right" : now > was ? "arrow.up" : "arrow.down" }
+    private var label: String {
+        if now == was { return "0%" }
+        guard was > 0 else { return "новое" }
+        let pct = (Double(now) - Double(was)) / Double(was) * 100
+        return "\(abs(Int(pct.rounded())))%"
+    }
+
+    var body: some View {
+        HStack(spacing: 2) {
+            Image(systemName: icon).font(.system(size: 11, weight: .heavy))
+            Text(label).font(.on(12.5, .heavy))
+        }
+        .foregroundStyle(tone.ink)
+        .padding(.leading, 6).padding(.trailing, 8).frame(height: 22)
+        .background(Capsule().fill(tone.fill))
     }
 }

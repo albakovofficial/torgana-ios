@@ -13,6 +13,7 @@ enum Route: Hashable {
     case doc(String)
     case web(String)
     case settings(SettingsSection)
+    case business(BizSection)
 
     /// /l/123-velosiped → .listing(123); /search?q=… и /c/… → поиск; остальное — страница сайта.
     static func from(path raw: String) -> Route? {
@@ -87,9 +88,14 @@ final class Nav: ObservableObject {
         case "/profile/settings": tab = .profile; paths[.profile] = []; return   // настройки — в профиле
         default: break
         }
-        // Разделы настроек сайта (#sf, #sn…) — родные экраны; «Пароль и вход» и «Для бизнеса» остаются страницами сайта.
+        // Разделы настроек сайта (#sf, #sn…) — родные экраны; «Пароль и вход» остаётся страницей сайта.
         if clean.hasPrefix("/profile/settings#"), let s = SettingsSection(hash: String(clean.split(separator: "#").last ?? "")) {
             tab = .profile; paths[.profile] = [Route.settings(s)]; return
+        }
+        // «Для бизнеса» — родные экраны: тарифы, «Мой магазин», витрина, статистика, проверка ИП (#s-biz).
+        let biz: [String: BizSection] = ["/business": .hub, "/profile/business": .hub, "/profile/business/shop": .shop, "/profile/business/stats": .stats, "/profile/settings#s-biz": .trust]
+        if let s = biz[clean.split(separator: "?").first.map(String.init) ?? clean] ?? biz[clean.replacingOccurrences(of: "#sh-about", with: "")] {
+            tab = .profile; paths[.profile] = s == .hub ? [Route.business(.hub)] : [Route.business(.hub), Route.business(s)]; return
         }
         if clean.hasPrefix("/messages") {
             // Переписка — во вкладке «Сообщения», поверх списка.
@@ -190,6 +196,7 @@ struct RouteView: View {
         case .doc(let slug): DocView(slug: slug)
         case .web(let path): WebScreen(path: path)
         case .settings(let s): SettingsScreen(section: s)
+        case .business(let s): BusinessScreen(section: s)
         }
     }
 }

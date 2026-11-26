@@ -65,6 +65,16 @@ http.createServer((req, res) => {
   if (p.startsWith('/demo/')) { const f = path.join(DIR, path.basename(p)); if (fs.existsSync(f)) { res.writeHead(200, { 'Content-Type': 'image/jpeg' }); return fs.createReadStream(f).pipe(res); } }
   if (p === '/api/config') return json(res, config);
   if (p === '/api/listings/title') return json(res, { title: 'iPhone 15 Pro\u00a0· 256 ГБ' });
+  // «Для бизнеса»: тариф «Магазин», витрина заполнена на 4 из 6, ИП ещё не проверен.
+  if (p === '/api/my/business') return json(res, { plan: { id: 'shop', name: 'Магазин', until: now + 47 * 24 * H, trial: false }, biz: null,
+    shop: { official: false, cover: '/demo/p1.jpg', about: 'Оригинальная техника Apple с гарантией. Доставка по России, самовывоз у метро.', hours: '10:00–21:00', address: 'Москва, Тверская, 12', site: '', delivery: '' },
+    pinned: [], promotions: [{ id: 1, listingId: 2, title: 'iPhone 15 Pro 256 ГБ, как новый', status: 'active', endsAt: now + 6 * 24 * H, shows: 3120, clicks: 94, note: '' }],
+    payments: [{ id: 2, title: 'Продвижение объявления на 7 дн. на Торгане', amount: 199, status: 'succeeded', method: 'Банковская карта', refunded: 0, createdAt: now - 24 * H },
+      { id: 1, title: 'Тариф «Магазин» на Торгане, 1 мес. (30 дней)', amount: 490, status: 'succeeded', method: 'СБП', refunded: 0, createdAt: now - 13 * 24 * H }] });
+  if (p === '/api/me/trademark') return json(res, { trademark: null, code: 'TG-4F2A9C', letter: 'Подтверждаю, что аккаунт demo@torgana.ru на сайте torgana.ru принадлежит ______ …\nКод заявки: TG-4F2A9C', docs: [], kinds: { cert: 'Свидетельство или выписка из реестра', letter: 'Письмо-подтверждение с кодом', power: 'Доверенность' } });
+  if (p === '/api/my/shop/stats') { const n = Number(u.searchParams.get('days') || 30); return json(res, { period: n, totals: { impressions: 18400, views: 1240, favs: 41 }, prev: { impressions: 15100, views: 1050, favs: 38 },
+    daily: Array.from({ length: n }, (_, i) => ({ day: `d${i}`, impressions: 500, views: 20 + Math.round(30 * Math.abs(Math.sin(i / 3))), favs: 1 })), active: 6,
+    listings: items.slice(0, 5).map((x, i) => ({ id: x.id, title: x.title, photo: x.photo, views: 412 - i * 60, favs: 31 - i * 4, impressions: 4000 })) }); }
   if (p === '/api/me') return json(res, { user: me, unread: 2, notices: 2, fresh: { price: 1, follow: 0 } });
   if (p === '/api/listings') { const q = (u.searchParams.get('q') || '').toLowerCase(); const cat = u.searchParams.get('category'); const list = items.filter((x) => (!u.searchParams.get('user') || x.seller.id === Number(u.searchParams.get('user'))) && (!cat || x.category === cat) && (!q || q === 'а' || x.title.toLowerCase().includes(q))); return json(res, { items: list, total: list.length }); }
   let m = /^\/api\/listings\/(\d+)$/.exec(p);

@@ -94,7 +94,12 @@ struct Badges: Codable, Hashable {
     let shop: Bool?
     let official: Bool?
     let first: FirstMedal?
+    /// «ИП проверен» / «Компания проверена» и галочка бренда (товарный знак).
+    let biz: BizBadge?
+    let tm: TmBadge?
 }
+struct BizBadge: Codable, Hashable { let kind: String?; let name: String? }
+struct TmBadge: Codable, Hashable { let number: String?; let name: String?; let until: Double? }
 
 struct Me: Codable, Hashable {
     let id: Int
@@ -423,3 +428,67 @@ struct PublicUser: Codable, Hashable {
 
 struct UserResponse: Codable { let user: PublicUser }
 struct FollowResult: Codable { let following: Bool; let followers: Int? }
+
+// MARK: - Для бизнеса (GET /api/my/business, /api/me/trademark, /api/my/shop/stats)
+
+struct BizHub: Decodable {
+    let plan: BizPlan?
+    let biz: BizCheck?
+    let shop: ShopInfo
+    let pinned: [PinnedItem]?
+    let promotions: [Promotion]?
+    let payments: [Payment]?
+}
+struct BizPlan: Decodable { let id: String; let name: String; let until: Double; let trial: Bool? }
+/// Заявка на проверку ИП или компании: status — pending, verified, rejected.
+struct BizCheck: Decodable { let status: String; let kind: String?; let name: String?; let inn: String?; let ogrn: String?; let note: String?; let at: Double? }
+struct ShopInfo: Decodable {
+    let official: Bool?
+    let cover: String?
+    let about: String?
+    let hours: String?
+    let address: String?
+    let site: String?
+    let delivery: String?
+}
+struct PinnedItem: Decodable, Identifiable { let id: Int; let title: String }
+struct Promotion: Decodable, Identifiable {
+    let id: Int
+    let listingId: Int?
+    let title: String
+    let status: String
+    let endsAt: Double?
+    let shows: Int?
+    let clicks: Int?
+    let note: String?
+}
+struct Payment: Decodable, Identifiable {
+    let id: Int
+    let title: String
+    let amount: Int
+    let status: String
+    let method: String?
+    let refunded: Int?
+    let createdAt: Double?
+}
+
+struct TrademarkResponse: Decodable {
+    let trademark: Trademark?
+    let code: String?
+    let letter: String?
+    let docs: [VerifyDoc]
+    let kinds: [String: String]
+}
+struct Trademark: Decodable { let status: String; let number: String?; let name: String?; let until: Double?; let note: String?; let at: Double?; let live: Bool? }
+struct VerifyDoc: Decodable, Identifiable { let id: Int; let kind: String; let kindName: String?; let mime: String?; let size: Int?; let name: String? }
+
+struct ShopStats: Decodable {
+    struct Sum: Decodable { let impressions: Int; let views: Int; let favs: Int }
+    struct Day: Decodable { let day: String; let views: Int }
+    struct Item: Decodable, Identifiable { let id: Int; let title: String; let photo: String?; let views: Int; let favs: Int }
+    let totals: Sum
+    let prev: Sum
+    let daily: [Day]
+    let listings: [Item]
+    let active: Int?
+}

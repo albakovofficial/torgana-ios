@@ -2,7 +2,7 @@ import SwiftUI
 import PhotosUI
 
 // Настройки — родные экраны (запросы те же, что у страницы настроек сайта: PATCH /api/me, /api/blocks, /api/me/erase…).
-// «Пароль и вход» и «Для бизнеса» пока открываются разделами сайта (привязка Яндекса/VK, документы ИП).
+// «Пароль и вход» пока открывается разделом сайта (привязка Яндекса и VK); «Для бизнеса» — BusinessViews.swift.
 enum SettingsSection: String, Hashable {
     case profile, notify, look, blocks, account
 
@@ -86,8 +86,8 @@ private struct ProfileEditForm: View {
                     }
                 }
             }
-            field("Имя") { TextField("Как к вам обращаться", text: $name).textContentType(.name).modifier(InputBox()) }
-            field("Город") {
+            LabeledField(label: "Имя") { TextField("Как к вам обращаться", text: $name).textContentType(.name).modifier(InputBox()) }
+            LabeledField(label: "Город") {
                 Button { cityPicker = true } label: {
                     HStack {
                         Text(city.isEmpty ? "Выберите город" : city).foregroundStyle(city.isEmpty ? T.faint : T.text)
@@ -98,7 +98,7 @@ private struct ProfileEditForm: View {
                 }
                 .buttonStyle(.plain)
             }
-            field("Телефон") {
+            LabeledField(label: "Телефон") {
                 TextField("+7 900 000-00-00", text: $phone).keyboardType(.phonePad).textContentType(.telephoneNumber).modifier(InputBox())
             }
             Text("Телефон виден только вам и модераторам — покупателям его не показываем.").font(.on(13)).foregroundStyle(T.muted)
@@ -113,13 +113,6 @@ private struct ProfileEditForm: View {
         }
         .onChange(of: photo) { _, item in if let item { Task { await upload(item) } } }
         .sheet(isPresented: $cityPicker) { OptionPicker(title: "Город", options: app.config?.cities ?? [], value: $city) }
-    }
-
-    private func field<C: View>(_ label: String, @ViewBuilder _ c: () -> C) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(label).font(.on(14, .semibold)).foregroundStyle(T.text)
-            c()
-        }
     }
 
     private func save() async {

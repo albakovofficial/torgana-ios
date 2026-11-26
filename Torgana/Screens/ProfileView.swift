@@ -85,7 +85,7 @@ struct ProfileView: View {
                 SettingsRow(icon: "lock.fill", color: Tint.sky, title: "Пароль и вход", sub: "Почта, Apple, Яндекс, VK") { nav.push(.web("/profile/settings#sp")) }
                 SettingsRow(icon: "moon.fill", color: Tint.indigo, title: "Оформление", sub: LookSettings.title) { nav.push(.settings(.look)) }
                 SettingsRow(icon: "nosign", color: Tint.gray, title: "Чёрный список", sub: "Кому нельзя вам писать") { nav.push(.settings(.blocks)) }
-                SettingsRow(icon: "briefcase.fill", color: Tint.orange, title: "Для бизнеса", sub: "Витрина и значок «ИП проверен»") { nav.push(.web("/profile/settings#s-biz")) }
+                SettingsRow(icon: "briefcase.fill", color: Tint.orange, title: "Для бизнеса", sub: "Витрина, статистика, значок «ИП проверен»") { nav.push(.business(.hub)) }
                 SettingsRow(icon: "envelope.fill", color: Tint.violet, title: "Аккаунт", sub: me.email ?? "", last: true) { nav.push(.settings(.account)) }
             }
             SettingsGroup(title: "Помощь") {

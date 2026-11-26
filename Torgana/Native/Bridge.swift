@@ -43,15 +43,20 @@ enum Bridge {
         if let raw = body["url"] as? String, let url = URL(string: raw, relativeTo: Router.shared.baseURL)?.absoluteURL {
             items.append(url)
         }
+        present(items) { activity, completed in
+            WebController.shared.send(["type": "share.result", "completed": completed, "activity": activity ?? ""])
+        }
+    }
+
+    /// Системное «Поделиться» с чем угодно: ссылка, текст, файл (выгрузка статистики).
+    static func present(_ items: [Any], done: ((String?, Bool) -> Void)? = nil) {
         guard !items.isEmpty, let top = UIApplication.shared.topController else { return }
         let sheet = UIActivityViewController(activityItems: items, applicationActivities: nil)
         if let popover = sheet.popoverPresentationController {
             popover.sourceView = top.view
             popover.sourceRect = CGRect(x: top.view.bounds.midX, y: top.view.bounds.maxY - 60, width: 1, height: 1)
         }
-        sheet.completionWithItemsHandler = { activity, completed, _, _ in
-            WebController.shared.send(["type": "share.result", "completed": completed, "activity": activity?.rawValue ?? ""])
-        }
+        sheet.completionWithItemsHandler = { activity, completed, _, _ in done?(activity?.rawValue, completed) }
         top.present(sheet, animated: true)
     }
 

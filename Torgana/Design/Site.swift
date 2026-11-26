@@ -158,6 +158,9 @@ struct SettingsRow: View {
     let title: String
     var sub: String? = nil
     var badge = 0
+    /// Статус словами справа («Готово», «На проверке») и замок вместо стрелки, если раздел пока закрыт.
+    var status: RowStatus? = nil
+    var locked = false
     var last = false
     let action: () -> Void
 
@@ -173,13 +176,42 @@ struct SettingsRow: View {
                 }
                 Spacer(minLength: 6)
                 CountBadge(n: badge)
-                Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundStyle(T.faint)
+                if let status {
+                    Text(status.text).font(.on(12, .bold)).foregroundStyle(status.tone.ink)
+                        .padding(.horizontal, 9).frame(height: 24).background(Capsule().fill(status.tone.fill))
+                }
+                Image(systemName: locked ? "lock.fill" : "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundStyle(T.faint)
             }
             .padding(.horizontal, 14).frame(minHeight: 56)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .overlay(alignment: .bottom) { if !last { T.line.opacity(0.6).frame(height: 1).padding(.leading, 58) } }
+    }
+}
+
+/// Статус строки: текст и тон (зелёный — готово, жёлтый — ждём, красный — исправить, серый — не начато).
+struct RowStatus {
+    enum Tone {
+        case ok, wait, bad, off
+        var ink: Color { switch self { case .ok: return T.good; case .wait: return Color.dyn(0x9A6A00, 0xF0C15A); case .bad: return T.danger; case .off: return T.muted } }
+        var fill: Color { switch self { case .ok: return T.goodSoft; case .wait: return T.warnSoft; case .bad: return T.dangerSoft; case .off: return T.surface } }
+    }
+    let text: String
+    let tone: Tone
+}
+
+/// Поле формы: подпись сверху, под ней ввод (профиль, витрина, проверка ИП).
+struct LabeledField<Content: View>: View {
+    let label: String
+    var hint: String? = nil
+    @ViewBuilder let content: () -> Content
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(label).font(.on(14, .semibold)).foregroundStyle(T.text)
+            content()
+            if let hint { Text(hint).font(.on(12.5)).foregroundStyle(T.muted).fixedSize(horizontal: false, vertical: true) }
+        }
     }
 }
 

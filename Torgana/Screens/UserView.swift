@@ -217,10 +217,18 @@ struct SellerCard<Actions: View>: View {
                 if let about = shop?.about, !about.isEmpty {
                     Text(about).font(.on(14.5)).foregroundStyle(T.text2).lineSpacing(2)
                         .lineLimit(aboutOpen ? nil : 3).fixedSize(horizontal: false, vertical: true).padding(.top, 10)
-                    if about.count > 120 || about.contains("\n") {
-                        Button(aboutOpen ? "Свернуть" : "Читать полностью") { withAnimation(.easeOut(duration: 0.2)) { aboutOpen.toggle() } }
-                            .font(.on(14, .semibold)).foregroundStyle(T.accent).padding(.top, 4)
+                    HStack(spacing: 16) {
+                        if about.count > 120 || about.contains("\n") {
+                            Button(aboutOpen ? "Свернуть" : "Читать полностью") { withAnimation(.easeOut(duration: 0.2)) { aboutOpen.toggle() } }
+                                .font(.on(14, .semibold)).foregroundStyle(T.accent)
+                        }
+                        if own { Button { nav.push(.business(.shop)) } label: { Label("Изменить", systemImage: "pencil") }.font(.on(14, .semibold)).foregroundStyle(T.accent) }
                     }
+                    .buttonStyle(.plain).padding(.top, 4)
+                } else if own && shop != nil {
+                    // Своя витрина без описания — сразу туда, где его пишут.
+                    Button { nav.push(.business(.shop)) } label: { Label("Добавить описание магазина", systemImage: "plus") }
+                        .font(.on(14, .semibold)).foregroundStyle(T.accent).buttonStyle(.plain).padding(.top, 10)
                 }
                 HStack(spacing: 8) {
                     let ads = u.activeCount ?? count

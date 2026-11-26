@@ -44,6 +44,17 @@ final class API {
         try await send("GET", path, query: query, body: Optional<[String: String]>.none)
     }
 
+    /// Файл с сервера как есть (выгрузка статистики в Excel).
+    func data(_ path: String, query: [String: String] = [:]) async throws -> Data {
+        var comps = URLComponents(url: url(path), resolvingAgainstBaseURL: true)!
+        if !query.isEmpty { comps.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) } }
+        let (data, resp): (Data, URLResponse)
+        do { (data, resp) = try await session.data(from: comps.url!) } catch { throw APIError.offline }
+        let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(status) else { throw APIError(status: status, message: "Не получилось скачать файл (\(status))") }
+        return data
+    }
+
     @discardableResult
     func post<R: Decodable, B: Encodable>(_ path: String, _ body: B, as type: R.Type = R.self) async throws -> R {
         try await send("POST", path, body: body)

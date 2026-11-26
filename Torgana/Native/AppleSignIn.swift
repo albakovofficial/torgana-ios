@@ -29,16 +29,20 @@ final class AppleSignIn: NSObject {
 
     // MARK: родной экран входа (SignInWithAppleButton)
     // Одноразовый nonce выдаёт сервер (POST /api/auth/apple/nonce) — берём заранее: кнопка Apple не ждёт сети.
-    private var serverNonce: String?
+    /// Сервер хранит код 10 минут — старше 9 минут берём новый.
+    private var serverNonce: (value: String, at: Date)?
 
-    func prefetchNonce() async {
-        if let r: JSONValue = try? await API.shared.post("/api/auth/apple/nonce", ["next": "/profile"]), let n = r["nonce"]?.string {
-            serverNonce = n
-        }
+    /// false — кода нет (нет связи): своим кодом вход не пройдёт, сервер ответит «Вход устарел».
+    @discardableResult
+    func prefetchNonce() async -> Bool {
+        if let n = serverNonce, Date().timeIntervalSince(n.at) < 540 { return true }
+        guard let r: JSONValue = try? await API.shared.post("/api/auth/apple/nonce", ["next": "/profile"]), let n = r["nonce"]?.string else { return false }
+        serverNonce = (n, Date())
+        return true
     }
 
     func prepare(_ request: ASAuthorizationAppleIDRequest) {
-        let raw = serverNonce ?? AppleSignIn.randomNonce()
+        let raw = serverNonce?.value ?? AppleSignIn.randomNonce()
         rawNonce = raw
         request.requestedScopes = [.fullName, .email]
         request.nonce = AppleSignIn.sha256(raw)

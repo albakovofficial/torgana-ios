@@ -33,7 +33,7 @@ struct ListingView: View {
     private var screen: some View {
         Group {
             if let d = data { content(d) }
-            else if let error { EmptyState(title: "Не открылось", text: error, button: "Повторить") { Task { await load() } }.padding(20) }
+            else if let error { LoadFailed(title: "Не открылось", error: error, retry: load).padding(20) }
             else { LoadingView() }
         }
         .sitePage()

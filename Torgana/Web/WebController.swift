@@ -90,6 +90,12 @@ final class WebController: NSObject {
         DispatchQueue.main.async { UIApplication.shared.open(url) }
     }
 
+    /// Сообщение пришло от самой страницы torgana.ru, а не от рамки внутри неё.
+    static func fromOwnPage(_ message: WKScriptMessage) -> Bool {
+        guard message.frameInfo.isMainFrame, let url = message.frameInfo.request.url else { return false }
+        return Router.shared.isInternal(url)
+    }
+
     static func isAuthHost(_ url: URL) -> Bool {
         guard let host = url.host?.lowercased() else { return false }
         return authHosts.contains { host == $0 || host.hasSuffix("." + $0) }
@@ -112,8 +118,8 @@ final class WebController: NSObject {
 extension WebController: WKScriptMessageHandler {
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard let body = message.body as? [String: Any], let type = body["type"] as? String else { return }
-        // Только со своих страниц: чужая рамка или страница входа не может звать приложение.
-        guard let origin = message.frameInfo.request.url, Router.shared.isInternal(origin) else { return }
+        // Только сама страница сайта: ни рамка внутри неё (там бывает чужой код — карта), ни страница входа Яндекса или VK.
+        guard WebController.fromOwnPage(message) else { return }
         current = message.webView
         Bridge.handle(type: type, body: body)
     }
@@ -175,7 +181,7 @@ final class WebPage: NSObject, ObservableObject, WKNavigationDelegate, WKUIDeleg
     """#
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard let text = message.body as? String, let origin = message.frameInfo.request.url, Router.shared.isInternal(origin) else { return }
+        guard let text = message.body as? String, WebController.fromOwnPage(message) else { return }
         if heading != text { heading = text }
     }
 

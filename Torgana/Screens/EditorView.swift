@@ -26,6 +26,8 @@ struct EditorView: View {
     @State private var exchange = false
     @State private var busy = false
     @State private var loaded = false
+    /// Объявление для изменения не загрузилось — экран с «Повторить» вместо пустой формы.
+    @State private var loadError: String?
     @State private var aiTried = false
     @State private var aiBusy = false
     @State private var done: Int?
@@ -58,6 +60,8 @@ struct EditorView: View {
         Group {
             if let id = done {
                 success(id)
+            } else if editId != nil && !loaded {
+                editLoading
             } else {
                 wizard
             }
@@ -76,6 +80,18 @@ struct EditorView: View {
             OptionPicker(title: f.label, options: listOptions(f) ?? [], value: Binding(get: { attrs[f.key] ?? "" }, set: { setAttr(f.key, $0) }))
         }
         .sheet(isPresented: $cityPicker) { OptionPicker(title: "Город", options: app.config?.cities ?? [], value: $city) }
+    }
+
+    /// Изменение: пока объявление не пришло — загрузка; не пришло — понятная ошибка, а не пустая форма.
+    private var editLoading: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            PageHeader(title: stepTitle) { dismiss() }
+            if let loadError {
+                LoadFailed(title: "Не открылось", error: loadError, retry: prefill).padding(.top, 8)
+            } else { LoadingView() }
+            Spacer()
+        }
+        .padding(.horizontal, 20)
     }
 
     /// Пока заполняют форму, вместо нижнего меню — панель «Далее» / «Опубликовать».
@@ -500,8 +516,13 @@ struct EditorView: View {
     private func prefill() async {
         guard !loaded else { return }
         if city.isEmpty { city = app.city.isEmpty ? (app.me?.city ?? "") : app.city }
-        if let id = editId, let r: ListingResponse = try? await API.shared.get("/api/listings/\(id)") {
-            let l = r.listing
+        if let id = editId {
+            loadError = nil
+            let l: Listing
+            do { l = (try await API.shared.get("/api/listings/\(id)") as ListingResponse).listing } catch is CancellationError { return } catch {
+                loadError = error.localizedDescription
+                return
+            }
             category = l.category ?? ""
             sub = l.subcategory ?? ""
             title = l.title

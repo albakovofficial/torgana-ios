@@ -954,15 +954,20 @@ struct FileBubble: View {
         .accessibilityLabel("Файл \(file.name)")
     }
 
+    /// Скачать во временную папку под исходным названием (только последняя часть — без путей) и открыть.
     private func open() async {
-        guard let url = API.shared.media(file.url) else { return }
         loading = true
         defer { loading = false }
-        guard let (tmp, _) = try? await URLSession.shared.download(from: url) else { return }
-        let dest = FileManager.default.temporaryDirectory.appendingPathComponent(file.name)
-        try? FileManager.default.removeItem(at: dest)
-        guard (try? FileManager.default.moveItem(at: tmp, to: dest)) != nil else { return }
-        local = dest
+        do {
+            let data = try await API.shared.data(file.url)
+            let name = (file.name as NSString).lastPathComponent
+            let safe = name.isEmpty || name.hasPrefix(".") ? "файл.\((file.url as NSString).pathExtension)" : name
+            let dest = FileManager.default.temporaryDirectory.appendingPathComponent(safe)
+            try data.write(to: dest, options: .atomic)
+            local = dest
+        } catch {
+            AppState.shared.show(error.localizedDescription, bad: true)
+        }
     }
 }
 

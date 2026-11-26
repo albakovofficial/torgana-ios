@@ -122,7 +122,7 @@ struct FeedView: View {
     var body: some View {
         if feed.items.isEmpty {
             if feed.loading { LoadingView() }
-            else if let e = feed.error { EmptyState(title: "Не загрузилось", text: e, button: "Повторить") { feed.retry() } }
+            else if let e = feed.error { LoadFailed(error: e) { feed.retry() } }
             else { EmptyState(title: emptyTitle, text: emptyText) }
         } else {
             ListingGrid(items: feed.items) { feed.more() }

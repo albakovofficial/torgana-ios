@@ -27,12 +27,12 @@ enum BizSection: String, Hashable {
 final class BizStore: ObservableObject {
     static let shared = BizStore()
     @Published var hub: BizHub?
-    @Published var failed = false
+    @Published var error: String?
 
     func load() async {
-        do { hub = try await API.shared.get("/api/my/business"); failed = false }
+        do { hub = try await API.shared.get("/api/my/business"); error = nil }
         catch is CancellationError {}
-        catch { if hub == nil { failed = true } }
+        catch { if hub == nil { self.error = error.localizedDescription } }
     }
 
     var open: Bool { hub?.plan != nil || hub?.shop.official == true }
@@ -56,8 +56,8 @@ struct BusinessScreen: View {
                     case .promo: PromoList(items: h.promotions ?? [])
                     case .payments: PaymentList(items: h.payments ?? [])
                     }
-                } else if store.failed {
-                    EmptyState(icon: "wifi.slash", title: "Не удалось загрузить", text: "Проверьте связь и попробуйте ещё раз.", button: "Повторить") { Task { await store.load() } }
+                } else if let error = store.error {
+                    LoadFailed(error: error, retry: store.load)
                 } else { LoadingView() }
             }
             .padding(.horizontal, 20)

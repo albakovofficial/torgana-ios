@@ -16,7 +16,7 @@ struct FavoritesView: View {
                 if loading && items.isEmpty {
                     LoadingView()
                 } else if let error, items.isEmpty {
-                    EmptyState(title: "Не загрузилось", text: error, button: "Повторить") { Task { await load() } }
+                    LoadFailed(error: error, retry: load)
                 } else if shown.isEmpty {
                     EmptyState(title: "Пока пусто", text: "Нажимайте на сердечко у объявлений, чтобы сохранить их здесь.", button: "Смотреть объявления") { nav.open(path: "/") }
                 } else {

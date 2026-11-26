@@ -29,7 +29,7 @@ struct UserView: View {
                         ListingGrid(items: items).padding(.top, 14)
                     }
                 } else if let error {
-                    EmptyState(title: "Не открылось", text: error)
+                    LoadFailed(title: "Не открылось", error: error)
                 } else {
                     LoadingView()
                 }

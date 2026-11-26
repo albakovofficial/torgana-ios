@@ -103,7 +103,7 @@ struct MessagesView: View {
         if loading && items.isEmpty {
             LoadingView()
         } else if let error, items.isEmpty {
-            EmptyState(title: "Не загрузилось", text: error, button: "Повторить") { Task { await load() } }
+            LoadFailed(error: error, retry: load)
         } else if shown.isEmpty {
             Text(emptyText).font(.on(15)).foregroundStyle(T.muted).padding(.horizontal, 20).padding(.vertical, 24)
         } else {

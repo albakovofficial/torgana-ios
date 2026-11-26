@@ -250,6 +250,21 @@ struct EmptyState: View {
     }
 }
 
+/// Не загрузилось или не открылось: причина и «Повторить» — одинаково на всех экранах.
+struct LoadFailed: View {
+    var title = "Не загрузилось"
+    let error: String
+    var retry: (() async -> Void)? = nil
+
+    var body: some View {
+        if let retry {
+            EmptyState(title: title, text: error, button: "Повторить") { Task { await retry() } }
+        } else {
+            EmptyState(title: title, text: error)
+        }
+    }
+}
+
 struct LoadingView: View {
     var body: some View {
         ProgressView().tint(T.accent).frame(maxWidth: .infinity, minHeight: 200)

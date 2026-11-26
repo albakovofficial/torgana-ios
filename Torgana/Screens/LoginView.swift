@@ -442,6 +442,7 @@ struct AuthButtons: View {
     }
 
     private func apple() async {
+        guard await AppleSignIn.shared.prefetchNonce() else { app.show(APIError.offline.message, bad: true); return }
         switch await AppleSignIn.shared.authorize() {
         case .failure(let e):
             if (e as? ASAuthorizationError)?.code != .canceled { app.show("Apple не подтвердил вход — попробуйте ещё раз", bad: true) }

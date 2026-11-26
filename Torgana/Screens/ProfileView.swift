@@ -147,10 +147,12 @@ struct ProfileView: View {
 final class MyListingsStore: ObservableObject {
     @Published var items: [MyListing] = []
     @Published var loading = true
+    @Published var error: String?
     @Published var tab = "active"
 
     func load() async {
-        if let r: MyListings = try? await API.shared.get("/api/my/listings") { items = r.items }
+        do { items = (try await API.shared.get("/api/my/listings") as MyListings).items; error = nil }
+        catch is CancellationError {} catch { self.error = error.localizedDescription }
         loading = false
     }
 
@@ -207,6 +209,8 @@ struct MyListingsSection: View {
             .padding(.horizontal, -20)
             if store.loading && store.items.isEmpty {
                 LoadingView()
+            } else if let error = store.error, store.items.isEmpty {
+                LoadFailed(error: error, retry: store.load)
             } else if store.shown.isEmpty {
                 EmptyState(icon: "square.grid.2x2", title: store.tab == "active" ? "Пока нет объявлений" : "Здесь пусто",
                            text: store.tab == "active" ? "Бесплатно и за пару минут." : "",
@@ -292,6 +296,7 @@ struct NoticesView: View {
     @EnvironmentObject private var nav: Nav
     @State private var items: [Notice] = []
     @State private var loading = true
+    @State private var error: String?
 
     var body: some View {
         ScrollView {
@@ -300,6 +305,8 @@ struct NoticesView: View {
                 PushCard().padding(.top, 18)
                 if loading && items.isEmpty {
                     LoadingView()
+                } else if let error, items.isEmpty {
+                    LoadFailed(error: error, retry: load).padding(.top, 16)
                 } else if items.isEmpty {
                     EmptyState(title: "Уведомлений нет", text: "Здесь появятся решения модерации, снижение цен в избранном и новое у продавцов из подписок.").padding(.top, 16)
                 } else {
@@ -358,7 +365,8 @@ struct NoticesView: View {
     }
 
     private func load() async {
-        if let r: NoticeList = try? await API.shared.get("/api/notices") { items = r.items }
+        do { items = (try await API.shared.get("/api/notices") as NoticeList).items; error = nil }
+        catch is CancellationError {} catch { self.error = error.localizedDescription }
         loading = false
     }
 }

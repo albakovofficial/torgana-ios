@@ -20,7 +20,7 @@ struct DocView: View {
                 if let text {
                     Text(text).font(.on(17)).foregroundStyle(T.text).tint(T.accent).lineSpacing(7).textSelection(.enabled).padding(.top, 20)
                 } else if let error {
-                    EmptyState(title: "Не открылось", text: error).padding(.top, 8)
+                    LoadFailed(title: "Не открылось", error: error).padding(.top, 8)
                 } else { LoadingView() }
             }
             .padding(.horizontal, 20)

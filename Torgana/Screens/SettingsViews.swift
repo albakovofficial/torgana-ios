@@ -245,11 +245,14 @@ private struct BlocksSettings: View {
     @EnvironmentObject private var app: AppState
     @State private var items: [BlockedUser] = []
     @State private var loading = true
+    @State private var error: String?
 
     var body: some View {
         Group {
             if loading && items.isEmpty {
                 LoadingView()
+            } else if let error, items.isEmpty {
+                LoadFailed(error: error, retry: load)
             } else if items.isEmpty {
                 EmptyState(title: "Список пуст", text: "Заблокировать можно в переписке или на странице продавца: он не сможет вам писать, а его объявления пропадут из выдачи.")
             } else {
@@ -275,7 +278,8 @@ private struct BlocksSettings: View {
     }
 
     private func load() async {
-        if let r: BlockList = try? await API.shared.get("/api/blocks") { items = r.items }
+        do { items = (try await API.shared.get("/api/blocks") as BlockList).items; error = nil }
+        catch is CancellationError {} catch { self.error = error.localizedDescription }
         loading = false
     }
 

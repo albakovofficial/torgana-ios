@@ -207,6 +207,13 @@ final class CookieSync: NSObject, WKHTTPCookieStoreObserver {
         store.setCookie(c) { DispatchQueue.main.async { self.adopting = false; completion?() } }
     }
 
+    /// Вход через Яндекс или VK начат родным запросом, а закончится на странице: кука начала входа нужна и ей,
+    /// иначе сервер не примет возврат от сервиса (вход привязан к тому, кто его начал).
+    func share(_ cookie: String, completion: @escaping () -> Void) {
+        guard let c = (HTTPCookieStorage.shared.cookies ?? []).first(where: { $0.name == cookie && ours($0) }) else { completion(); return }
+        store.setCookie(c) { DispatchQueue.main.async { completion() } }
+    }
+
     /// Ответ сервера продлил сессию (1.59.3: Set-Cookie на /api/me) — запомнить новый срок.
     func remember() { if let c = sid, c.value == lastSid { SessionVault.save(c) } }
 

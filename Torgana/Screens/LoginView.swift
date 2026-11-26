@@ -423,12 +423,16 @@ struct AuthButtons: View {
         }
     }
 
+    private struct OAuthStart: Encodable { let next: String; let consent: Bool; let src: String }
+
     private func oauth<L: View>(_ provider: String, label: String, fill: Color, @ViewBuilder icon: () -> L) -> some View {
         Button {
             Task {
                 do {
-                    let r: JSONValue = try await API.shared.post("/api/auth/oauth/\(provider)/start", ["next": "/profile"])
-                    if let s = r["url"]?.string, let u = URL(string: s) { oauthURL = OAuthLink(url: u) }
+                    let r: JSONValue = try await API.shared.post("/api/auth/oauth/\(provider)/start", OAuthStart(next: "/profile", consent: true, src: "ios"))
+                    guard let s = r["url"]?.string, let u = URL(string: s) else { return }
+                    await withCheckedContinuation { c in CookieSync.shared.share("tg_oauth") { c.resume() } }
+                    oauthURL = OAuthLink(url: u)
                 } catch { app.show((error as? APIError)?.message ?? "Не получилось", bad: true) }
             }
         } label: {

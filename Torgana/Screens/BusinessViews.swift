@@ -307,12 +307,14 @@ private struct ShopEditView: View {
 
     private var cover: some View {
         let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
-        return Group {
-            if let coverImage { Color.clear.overlay(Image(uiImage: coverImage).resizable().scaledToFill()) }
+        // Широкая обложка не должна раздвигать страницу: размер задаёт пустая рамка, картинка — поверх неё.
+        return Color.clear.frame(maxWidth: .infinity).frame(height: 150)
+        .overlay {
+            if let coverImage { Image(uiImage: coverImage).resizable().scaledToFill() }
             else if let coverURL { RemoteImage(url: coverURL) }
             else { T.gradSoft.overlay(Image(systemName: "photo").font(.system(size: 30)).foregroundStyle(T.accent.opacity(0.6))) }
         }
-        .frame(height: 150).frame(maxWidth: .infinity).clipShape(shape)
+        .clipShape(shape)
         .overlay { if uploading { ProgressView().tint(.white).frame(maxWidth: .infinity, maxHeight: .infinity).background(.black.opacity(0.3)).clipShape(shape) } }
         .overlay(alignment: .bottomTrailing) {
             HStack(spacing: 8) {

@@ -258,7 +258,7 @@ struct ChatView: View {
     }
 
     private func bubbleBody(_ m: Message) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
+        BubbleStack {
             if let r = m.reply {
                 HStack(spacing: 8) {
                     Capsule().fill(m.mine ? Color.white.opacity(0.85) : T.accent).frame(width: 3)
@@ -278,7 +278,6 @@ struct ChatView: View {
                 Text(b).font(.on(16)).foregroundStyle(m.mine ? .white : T.text).lineSpacing(2).textSelection(.enabled)
             }
             HStack(spacing: 4) {
-                Spacer(minLength: 0)
                 Text((m.editedAt != nil ? "изменено · " : "") + Fmt.time(m.createdAt)).font(.on(11)).foregroundStyle(m.mine ? Color.white.opacity(0.75) : T.faint)
                 if m.mine && kind != .support { Ticks(read: m.id <= readUpTo, tint: Color.white.opacity(m.id <= readUpTo ? 0.95 : 0.7)) }
             }
@@ -1119,4 +1118,26 @@ extension UIImage {
 extension String {
     /// «вчера» → «Вчера» (разделитель дней в переписке).
     var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
+}
+
+/// Пузырь по ширине содержимого (а не на всю ширину): строки — слева, последняя строка (время) — справа.
+private struct BubbleStack: Layout {
+    var spacing: CGFloat = 5
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let sizes = subviews.map { $0.sizeThatFits(ProposedViewSize(width: proposal.width, height: nil)) }
+        let width = sizes.map(\.width).max() ?? 0
+        let height = sizes.map(\.height).reduce(0, +) + spacing * CGFloat(max(0, sizes.count - 1))
+        return CGSize(width: width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var y = bounds.minY
+        for (i, view) in subviews.enumerated() {
+            let size = view.sizeThatFits(ProposedViewSize(width: bounds.width, height: nil))
+            let x = i == subviews.count - 1 ? bounds.maxX - size.width : bounds.minX
+            view.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(width: size.width, height: size.height))
+            y += size.height + spacing
+        }
+    }
 }

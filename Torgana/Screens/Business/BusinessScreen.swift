@@ -17,6 +17,30 @@ enum BizSection: String, Hashable {
         case .payments: return "Платежи и чеки"
         }
     }
+
+    /// Значок и тон — одни для строки или плитки в хабе и для шапки раздела (PageCover).
+    var icon: String {
+        switch self {
+        case .hub: return "briefcase.fill"
+        case .shop: return "storefront.fill"
+        case .trust: return "checkmark.shield.fill"
+        case .brand: return "checkmark.seal.fill"
+        case .stats: return "chart.bar.fill"
+        case .promo: return "megaphone.fill"
+        case .payments: return "doc.text.fill"
+        }
+    }
+
+    var tone: Tone {
+        switch self {
+        case .hub, .promo: return .yellow
+        case .shop: return .blue
+        case .trust: return .green
+        case .brand: return .teal
+        case .stats: return .purple
+        case .payments: return .gray
+        }
+    }
 }
 
 /// Данные раздела: один запрос на все экраны, после сохранения — обновить.
@@ -42,7 +66,7 @@ struct BusinessScreen: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                PageHeader(title: section.title).padding(.bottom, 16)
+                PageCover(title: section.title, icon: section.icon, tone: section.tone).padding(.bottom, 16)
                 if let h = store.hub {
                     switch section {
                     case .hub: BizHubView(h: h)

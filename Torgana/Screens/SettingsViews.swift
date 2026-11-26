@@ -26,6 +26,34 @@ enum SettingsSection: String, Hashable {
         case .blocks: return "Чёрный список"
         }
     }
+
+    /// Значок, тон и подпись — одни для строки в «Профиле» и для шапки раздела (PageCover).
+    var icon: String {
+        switch self {
+        case .profile: return "person.fill"
+        case .notify: return "bell.fill"
+        case .look: return "moon.fill"
+        case .blocks: return "nosign"
+        }
+    }
+
+    var tone: Tone {
+        switch self {
+        case .profile: return .blue
+        case .notify: return .red
+        case .look: return .purple
+        case .blocks: return .gray
+        }
+    }
+
+    @MainActor var sub: String {
+        switch self {
+        case .profile: return "Фото, имя, телефон, почта и вход"
+        case .notify: return "Push на этом iPhone и письма"
+        case .look: return LookSettings.title
+        case .blocks: return "Кому нельзя вам писать"
+        }
+    }
 }
 
 struct SettingsScreen: View {
@@ -34,7 +62,7 @@ struct SettingsScreen: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                PageHeader(title: section.title).padding(.bottom, 18)
+                PageCover(title: section.title, sub: section.sub, icon: section.icon, tone: section.tone).padding(.bottom, 18)
                 switch section {
                 case .profile: ProfileEditForm()
                 case .notify: NotifySettings()

@@ -15,21 +15,21 @@ struct BizHubView: View {
             if open && !launched { checklist }
             if open {
                 SettingsGroup {
-                    SettingsRow(icon: "storefront.fill", color: Tint.blue, title: "Витрина", sub: "заполнено \(shopFilled) из 6 · обложка, описание, адрес", last: true) { nav.push(.business(.shop)) }
+                    row(.shop, sub: "заполнено \(shopFilled) из 6 · обложка, описание, адрес", last: true) { nav.push(.business(.shop)) }
                 }
                 HStack(spacing: 10) {
-                    tile("chart.bar.fill", Tint.violet, "Статистика", "просмотры и избранное") { nav.push(.business(.stats)) }
-                    tile("megaphone.fill", Tint.orange, "Продвижение", promoSub) { nav.push(.business(.promo)) }
+                    tile(.stats, "просмотры и избранное")
+                    tile(.promo, promoSub)
                 }
             }
             SettingsGroup(title: "Доверие покупателей") {
-                SettingsRow(icon: "checkmark.shield.fill", color: Tint.green, title: bizTitle, sub: "значок у имени", status: bizStatus) { nav.push(.business(.trust)) }
-                SettingsRow(icon: "checkmark.seal.fill", color: Tint.sky, title: "Галочка бренда", sub: "для владельцев товарного знака",
+                row(.trust, title: bizTitle, sub: "значок у имени", status: bizStatus) { nav.push(.business(.trust)) }
+                row(.brand, sub: "для владельцев товарного знака",
                             status: brandStatus, locked: !bizSent, last: true) { nav.push(.business(bizSent ? .brand : .trust)) }
             }
             if open || !(h.payments ?? []).isEmpty {
                 SettingsGroup {
-                    SettingsRow(icon: "doc.text.fill", color: Tint.gray, title: "Платежи и чеки", sub: paySub, last: true) { nav.push(.business(.payments)) }
+                    row(.payments, sub: paySub, last: true) { nav.push(.business(.payments)) }
                 }
             }
         }
@@ -135,13 +135,19 @@ struct BizHubView: View {
         .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(T.line, lineWidth: 1))
     }
 
-    private func tile(_ icon: String, _ color: Color, _ title: String, _ sub: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+    /// Строка раздела: значок, цвет и название — из BizSection (те же, что в шапке раздела).
+    private func row(_ s: BizSection, title: String? = nil, sub: String, status: RowStatus? = nil, locked: Bool = false, last: Bool = false,
+                     action: @escaping () -> Void) -> some View {
+        SettingsRow(icon: s.icon, color: s.tone.color, title: title ?? s.title, sub: sub, status: status, locked: locked, last: last, action: action)
+    }
+
+    private func tile(_ s: BizSection, _ sub: String) -> some View {
+        Button { nav.push(.business(s)) } label: {
             VStack(alignment: .leading, spacing: 10) {
-                Image(systemName: icon).font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
-                    .frame(width: 32, height: 32).background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(color))
+                Image(systemName: s.icon).font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
+                    .frame(width: 32, height: 32).background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(s.tone.color))
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(title).font(.on(15.5, .semibold)).foregroundStyle(T.text)
+                    Text(s.title).font(.on(15.5, .semibold)).foregroundStyle(T.text)
                     Text(sub).font(.on(12.5)).foregroundStyle(T.muted).lineLimit(1)
                 }
             }

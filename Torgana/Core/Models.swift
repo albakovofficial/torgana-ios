@@ -274,8 +274,9 @@ struct Person: Codable, Hashable {
     let id: Int
     let name: String
     let avatar: String?
-    let createdAt: Double?
     let rep: Rep?
+    /// Значки собеседника в переписке (печать у имени официального аккаунта и бренда).
+    let badges: Badges?
 }
 
 struct ConvItem: Codable, Identifiable, Hashable {

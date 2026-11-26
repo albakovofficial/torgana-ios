@@ -138,8 +138,8 @@ final class WeakScriptHandler: NSObject, WKScriptMessageHandler {
 @MainActor
 final class WebPage: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
     let web: WKWebView
-    /// Заголовок раздела сайта — стоит рядом со стрелкой назад; на самой странице он спрятан.
-    @Published var heading = ""
+    /// Шапка раздела сайта (заголовок, подпись, значок) — её рисует приложение (PageCover); на самой странице она спрятана.
+    @Published var cover = WebCover()
     @Published var loading = true
     @Published var failed = false
     /// Адрес открытой страницы (сайт меняет его без перезагрузки — следим через KVO).
@@ -154,8 +154,8 @@ final class WebPage: NSObject, ObservableObject, WKNavigationDelegate, WKUIDeleg
         web.uiDelegate = self
         if embedded {
             let content = web.configuration.userContentController
-            content.add(WeakScriptHandler(self), name: "heading")
-            content.addUserScript(WKUserScript(source: Self.headingScript, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+            content.add(WeakScriptHandler(self), name: "cover")
+            content.addUserScript(WKUserScript(source: Self.coverScript, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
         }
         // WebKit сообщает о смене адреса на главном потоке; путь обновляем следующим шагом, не посреди отрисовки.
         urlWatch = web.observe(\.url, options: [.new]) { [weak self] w, _ in
@@ -167,17 +167,22 @@ final class WebPage: NSObject, ObservableObject, WKNavigationDelegate, WKUIDeleg
         load(path: path)
     }
 
-    // Первый заголовок раздела (h2 настроек или h1 страницы) отдаём приложению и прячем: сайт перерисовывает
+    // Шапка страницы — обложка .pcover (cover.js): её строку сайт прячет сам (.in-app-native), данные — в data-атрибутах.
+    // У страниц без обложки — первый заголовок (h2 настроек или h1): отдаём его и прячем. Сайт перерисовывает
     // страницу без перезагрузки, поэтому следим за изменениями.
-    private static let headingScript = #"""
+    private static let coverScript = #"""
     (function () {
       var last = null, t = 0;
       function scan() {
         t = 0;
-        var el = document.querySelector('#app .set-h > h2') || document.querySelector('#app h1');
-        var txt = el ? el.textContent.trim() : '';
-        if (el) el.style.display = 'none';
-        if (txt !== last) { last = txt; try { window.webkit.messageHandlers.heading.postMessage(txt); } catch (e) {} }
+        var c = document.querySelector('#app .pcover'), d = { title: '', sub: '', icon: '', tone: '' };
+        if (c) d = { title: c.dataset.title || '', sub: c.dataset.sub || '', icon: c.dataset.icon || '', tone: c.dataset.tone || '' };
+        else {
+          var el = document.querySelector('#app .set-h > h2') || document.querySelector('#app h1');
+          if (el) { d.title = el.textContent.trim(); el.style.display = 'none'; }
+        }
+        var key = JSON.stringify(d);
+        if (key !== last) { last = key; try { window.webkit.messageHandlers.cover.postMessage(d); } catch (e) {} }
       }
       new MutationObserver(function () { if (!t) t = setTimeout(scan, 30); }).observe(document.documentElement, { childList: true, subtree: true });
       scan();
@@ -185,8 +190,9 @@ final class WebPage: NSObject, ObservableObject, WKNavigationDelegate, WKUIDeleg
     """#
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard let text = message.body as? String, WebController.fromOwnPage(message) else { return }
-        if heading != text { heading = text }
+        guard let d = message.body as? [String: String], WebController.fromOwnPage(message) else { return }
+        let next = WebCover(title: d["title"] ?? "", sub: d["sub"] ?? "", icon: d["icon"] ?? "", tone: d["tone"] ?? "")
+        if cover != next { cover = next }
     }
 
     func load(path: String) {
@@ -314,8 +320,10 @@ struct WebScreen: View {
         } else {
             // Раздел сайта внутри приложения: шапка и нижнее меню — родные, как на остальных экранах.
             VStack(alignment: .leading, spacing: 0) {
-                PageHeader(title: page.heading.isEmpty ? nil : page.heading) { if page.web.canGoBack { page.web.goBack() } else { dismiss() } }
-                    .padding(.horizontal, 20).padding(.bottom, 6)
+                let c = page.cover
+                PageCover(title: c.title.isEmpty ? title : c.title, sub: c.sub, icon: c.symbol, tone: c.toneValue,
+                          back: { if page.web.canGoBack { page.web.goBack() } else { dismiss() } })
+                .padding(.horizontal, 20).padding(.bottom, 8)
                 WebPageView(page: page)
             }
             .sitePage()

@@ -35,21 +35,3 @@ struct SwipeToReply: ViewModifier {
             }
     }
 }
-
-// Три точки «печатает…».
-struct TypingDots: View {
-    @State private var on = false
-    var body: some View {
-        HStack(spacing: 4) {
-            ForEach(0..<3) { i in
-                Circle().fill(T.muted).frame(width: 7, height: 7)
-                    .opacity(on ? 1 : 0.3)
-                    .animation(.easeInOut(duration: 0.6).repeatForever().delay(Double(i) * 0.2), value: on)
-            }
-        }
-        .padding(.horizontal, 14).padding(.vertical, 13)
-        .background(UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 6, bottomTrailingRadius: 20, topTrailingRadius: 20, style: .continuous).fill(T.surface))
-        .onAppear { on = true }
-        .accessibilityLabel("Печатает")
-    }
-}

@@ -4,8 +4,8 @@ import AVKit
 import QuickLook
 import UniformTypeIdentifiers
 
-// Переписка (вариант 1, «мессенджер», выбран владельцем 13 ноября): на весь экран — шапка с собеседником и «печатает…»,
-// под ней полоса с товаром; свои сообщения — фирменный градиент, чужие — серые; предложение цены — компактная карточка;
+// Переписка (вариант 1, «мессенджер», выбран владельцем 13 ноября; шапка — решение 27.11): обложка с собеседником,
+// уровнем или «печатает…» и объявлением; свои сообщения — фирменный градиент, чужие — серые; предложение цены — компактная карточка;
 // внизу «+» — плитки над полем (фото до 10 сразу, видео, файл, своя цена; вариант B), поле и отправка.
 // Пока вложение загружается — оно уже в ленте: превью, кольцо загрузки, крестик «отменить». Новые сообщения — раз в 2,5 секунды, пока чат на экране (как сайт).
 struct ChatView: View {
@@ -28,6 +28,7 @@ struct ChatView: View {
     @State private var videoItem: PhotosPickerItem?
     @State private var fileImporter = false
     @State private var attachOpen = false          // плитки «Фото, Видео, Файл, Своя цена» над «+»
+    @State private var repOpen = false             // карточка репутации собеседника (нажали на имя)
 
     init(kind: Kind) {
         self.kind = kind
@@ -37,16 +38,12 @@ struct ChatView: View {
     var body: some View {
         VStack(spacing: 0) {
             chatHeader
-            if let l = chat.data?.listing { listingStrip(l) }
             ScrollViewReader { proxy in
                 // Переписка «перевёрнута» (как в мессенджерах): начало прокрутки — это низ, самое новое. Поэтому при открытии
                 // и закрытии клавиатуры, при новых сообщениях последние всегда остаются над полем ввода — без доводки и прыжков.
                 // Каждая строка перевёрнута обратно, порядок строк — от новых к старым.
                 ScrollView {
                     LazyVStack(spacing: 6) {
-                        if chat.typing {
-                            HStack { TypingDots(); Spacer() }.flipped().id("typing")
-                        }
                         if let p = chat.pending {
                             PendingBubble(upload: p) { chat.cancelUpload() }.flipped().id("pending")
                         }
@@ -118,6 +115,11 @@ struct ChatView: View {
         .sheet(item: $counterFor) { o in
             PriceSheet(title: "Своя цена", hint: "Покупатель предложил \(Fmt.price(o.price))") { price in await chat.act(o, "counter", price: price) }
         }
+        .sheet(isPresented: $repOpen) {
+            if let o = chat.data?.other {
+                ChatRepSheet(person: o, buyer: chat.data?.conversation?.role != "seller") { repOpen = false; nav.push(.user(o.id)) }
+            }
+        }
         .sheet(isPresented: $confirmBlock) {
             if let o = chat.data?.other { BlockSheet(name: o.name, avatar: o.avatar, blocked: chat.data?.block == "me") { await chat.toggleBlock() } }
         }
@@ -130,55 +132,75 @@ struct ChatView: View {
 
     private func date(_ m: Message) -> Date { Date(timeIntervalSince1970: (m.createdAt ?? 0) / 1000) }
 
-    // MARK: шапка: назад, аватар собеседника 40, имя 17/700, под ним «печатает…» (синим) или кто это; «ещё»
+    // MARK: шапка (решение 27.11, «1+5 · аватар справа»): обложка, как у внутренних страниц — «‹», имя (нажатие —
+    // карточка репутации), под ним уровень или «печатает…», «ещё», аватар справа; ниже — карточка объявления.
     private var chatHeader: some View {
-        HStack(spacing: 10) {
-            BackButton()
-            if kind == .support {
-                Image("SupportAvatar").resizable().frame(width: 40, height: 40)
-                VStack(alignment: .leading, spacing: 1) {
-                    HStack(spacing: 4) {
-                        Text("Поддержка Торганы").font(.on(17, .bold)).foregroundStyle(T.text)
-                        Verified(size: 17)
-                    }
-                    Text("Отвечают люди, а не боты").font(.on(13)).foregroundStyle(T.muted)
-                }
-                Spacer(minLength: 0)
-            } else {
-                Button { if let o = chat.data?.other { nav.push(.user(o.id)) } } label: {
-                    HStack(spacing: 10) {
-                        if let o = chat.data?.other { Avatar(name: o.name, url: o.avatar, size: 40) } else { Circle().fill(T.surface).frame(width: 40, height: 40) }
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(chat.data?.other?.name ?? "Переписка").font(.on(17, .bold)).foregroundStyle(T.text).lineLimit(1)
-                            Text(chat.typing ? "печатает…" : (chat.data?.conversation?.role == "seller" ? "покупатель" : "продавец"))
-                                .font(.on(13, chat.typing ? .semibold : .regular)).foregroundStyle(chat.typing ? T.accent : T.muted)
-                                .animation(.easeOut(duration: 0.15), value: chat.typing)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                BackButton()
+                if kind == .support {
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 4) {
+                            Text("Поддержка Торганы").font(.on(19, .heavy)).foregroundStyle(T.text).lineLimit(1)
+                            Verified(size: 17)
                         }
-                        Spacer(minLength: 0)
+                        Text("Отвечают люди, а не боты").font(.on(13.5)).foregroundStyle(T.text2)
                     }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                if let o = chat.data?.other, let id = chat.convId {
-                    Menu {
-                        Button { nav.push(.user(o.id)) } label: { Label("Профиль собеседника", systemImage: "person") }
-                        if let l = chat.data?.listing { Button { nav.push(.listing(l.id)) } label: { Label("Объявление", systemImage: "doc.text") } }
-                        Button { nav.push(.web("/messages/\(id)")) } label: { Label("Сделка и отзыв", systemImage: "hand.thumbsup") }
-                        Button(role: chat.data?.block == "me" ? nil : .destructive) { confirmBlock = true } label: {
-                            Label(chat.data?.block == "me" ? "Разблокировать" : "Заблокировать", systemImage: "hand.raised")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    Image("SupportAvatar").resizable().frame(width: 44, height: 44)
+                } else {
+                    let o = chat.data?.other
+                    Button { if o != nil { repOpen = true } } label: {
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack(spacing: 4) {
+                                Text(o?.name ?? "Переписка").font(.on(19, .heavy)).foregroundStyle(T.text).lineLimit(1)
+                                if o?.badges?.official == true || o?.badges?.tm != nil { Verified(size: 17) }
+                            }
+                            if chat.typing {
+                                Text("печатает…").font(.on(13.5, .semibold)).foregroundStyle(T.accent)
+                            } else if let r = o?.rep, let name = r.levelName {
+                                HStack(spacing: 6) {
+                                    LevelCoin(level: r.level ?? 0, size: 18)
+                                    Text(name + ((r.deals ?? 0) > 0 ? " · \(r.deals ?? 0) \(Fmt.plural(r.deals ?? 0, "сделка", "сделки", "сделок"))" : ""))
+                                        .font(.on(13.5, .semibold)).foregroundStyle(T.text2).lineLimit(1)
+                                }
+                            } else {
+                                Text(chat.data?.conversation?.role == "seller" ? "Покупатель" : "Продавец").font(.on(13.5)).foregroundStyle(T.text2)
+                            }
                         }
-                    } label: {
-                        Image(systemName: "ellipsis").font(.system(size: 18, weight: .semibold)).foregroundStyle(T.text).frame(width: 40, height: 40)
+                        .animation(.easeOut(duration: 0.15), value: chat.typing)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                     }
-                    .accessibilityLabel("Ещё")
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Репутация собеседника")
+                    if let o, let id = chat.convId {
+                        Menu {
+                            Button { nav.push(.user(o.id)) } label: { Label("Профиль собеседника", systemImage: "person") }
+                            if let l = chat.data?.listing { Button { nav.push(.listing(l.id)) } label: { Label("Объявление", systemImage: "doc.text") } }
+                            Button { nav.push(.web("/messages/\(id)")) } label: { Label("Сделка и отзыв", systemImage: "hand.thumbsup") }
+                            Button(role: chat.data?.block == "me" ? nil : .destructive) { confirmBlock = true } label: {
+                                Label(chat.data?.block == "me" ? "Разблокировать" : "Заблокировать", systemImage: "hand.raised")
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis").font(.system(size: 18, weight: .semibold)).foregroundStyle(T.text).frame(width: 40, height: 40)
+                        }
+                        .accessibilityLabel("Ещё")
+                        Button { nav.push(.user(o.id)) } label: { Avatar(name: o.name, url: o.avatar, size: 44) }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Профиль: \(o.name)")
+                    }
                 }
             }
+            if let l = chat.data?.listing { listingCard(l) }
         }
-        .padding(.leading, 6).padding(.trailing, 12).padding(.vertical, 6)
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 24, style: .continuous).fill(T.cover))
+        .padding(.horizontal, 8).padding(.top, 4).padding(.bottom, 4)
     }
 
-    /// Полоса с товаром под шапкой: фото 42, название, цена (или «договорились», «продано»), справа — «Своя цена» или «Объявление».
-    private func listingStrip(_ l: ChatListing) -> some View {
+    /// Объявление в шапке: фото 44, название, цена (или «договорились», «продано»), стрелка.
+    private func listingCard(_ l: ChatListing) -> some View {
         let agreed = chat.offers.last { $0.status == "accepted" }
         let sub: String = {
             switch l.status {
@@ -188,34 +210,19 @@ struct ChatView: View {
             default: return agreed.map { "\(Fmt.price($0.price)) · договорились" } ?? Fmt.price(l.price, unit: l.priceUnit)
             }
         }()
-        return HStack(spacing: 10) {
-            Button { if l.status != "deleted" { nav.push(.listing(l.id)) } } label: {
-                HStack(spacing: 10) {
-                    RemoteImage(url: API.shared.media(l.photo)).frame(width: 42, height: 42).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(l.title).font(.on(15, .bold)).foregroundStyle(T.text).lineLimit(1)
-                        Text(sub).font(.on(14)).foregroundStyle(T.muted).lineLimit(1)
-                    }
-                    Spacer(minLength: 0)
+        return Button { if l.status != "deleted" { nav.push(.listing(l.id)) } } label: {
+            HStack(spacing: 12) {
+                RemoteImage(url: API.shared.media(l.photo)).frame(width: 44, height: 44).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(l.title).font(.on(15, .semibold)).foregroundStyle(T.text).lineLimit(1)
+                    Text(sub).font(.on(14, .bold)).foregroundStyle(l.status == "active" || l.status == nil ? T.text : T.muted).lineLimit(1)
                 }
-                .contentShape(Rectangle())
+                Spacer(minLength: 0)
+                if l.status != "deleted" { Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold)).foregroundStyle(T.faint) }
             }
-            .buttonStyle(.plain)
-            if chat.canOffer {
-                stripButton("Своя цена") { offerSheet = true }
-            } else if l.status != "deleted" {
-                stripButton("Объявление") { nav.push(.listing(l.id)) }
-            }
-        }
-        .padding(.horizontal, 10).padding(.vertical, 8)
-        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(T.surface))
-        .padding(.horizontal, 12).padding(.bottom, 4)
-    }
-
-    private func stripButton(_ title: String, _ action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title).font(.on(14, .semibold)).foregroundStyle(T.accent)
-                .padding(.horizontal, 12).frame(height: 34).background(Capsule().fill(T.card))
+            .padding(8).padding(.trailing, 6)
+            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(T.card))
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }

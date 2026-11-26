@@ -76,11 +76,10 @@ struct ProfileView: View {
                 SettingsRow(icon: "person.2.fill", color: Tint.violet, title: "Подписки", sub: "Продавцы и новинки", last: true) { nav.push(.web("/profile/following")) }
             }
             SettingsGroup(title: "Настройки") {
-                SettingsRow(icon: "person.fill", color: Tint.blue, title: "Профиль", sub: "Фото, имя, телефон, почта и вход") { nav.push(.settings(.profile)) }
-                SettingsRow(icon: "bell.fill", color: Tint.red, title: "Уведомления", sub: "Push на этом iPhone и письма") { nav.push(.settings(.notify)) }
-                SettingsRow(icon: "moon.fill", color: Tint.indigo, title: "Оформление", sub: LookSettings.title) { nav.push(.settings(.look)) }
-                SettingsRow(icon: "nosign", color: Tint.gray, title: "Чёрный список", sub: "Кому нельзя вам писать") { nav.push(.settings(.blocks)) }
-                SettingsRow(icon: "briefcase.fill", color: Tint.orange, title: "Для бизнеса", sub: "Витрина, статистика, значок «ИП проверен»", last: true) { nav.push(.business(.hub)) }
+                ForEach([SettingsSection.profile, .notify, .look, .blocks], id: \.self) { s in
+                    SettingsRow(icon: s.icon, color: s.tone.color, title: s.title, sub: s.sub) { nav.push(.settings(s)) }
+                }
+                SettingsRow(icon: BizSection.hub.icon, color: BizSection.hub.tone.color, title: BizSection.hub.title, sub: "Витрина, статистика, значок «ИП проверен»", last: true) { nav.push(.business(.hub)) }
             }
             SettingsGroup(title: "Помощь") {
                 SettingsRow(icon: "headphones", color: Tint.green, title: "Поддержка", sub: "Отвечают люди, а не боты") { nav.push(.support) }
@@ -295,7 +294,7 @@ struct NoticesView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                PageHeader(title: "Уведомления")
+                PageCover(title: "Уведомления", sub: "Модерация, цены в избранном, новое в подписках", icon: "bell.fill", tone: .red)
                 PushCard().padding(.top, 18)
                 if loading && items.isEmpty {
                     LoadingView()

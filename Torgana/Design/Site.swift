@@ -286,12 +286,10 @@ struct LabeledField<Content: View>: View {
 
 /// Цвета значков настроек (насыщенные, как в iOS).
 enum Tint {
-    static let blue = Color(hex: 0x3963CC)
     static let sky = Color(hex: 0x2E8BEA)
     static let green = Color(hex: 0x2FA45F)
     static let red = Color(hex: 0xE5484D)
     static let violet = Color(hex: 0x8A5CF0)
-    static let indigo = Color(hex: 0x5B5FD6)
     static let orange = Color(hex: 0xE9A23B)
     static let gray = Color(hex: 0x7A8094)
 }

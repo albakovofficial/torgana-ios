@@ -737,7 +737,7 @@ private struct StatsView: View {
             if let prev, prev > 0 {
                 let d = Int(((Double(n) - Double(prev)) / Double(prev) * 100).rounded())
                 Text(d >= 0 ? "+\(d)%" : "\(d)%").font(.on(12, .bold)).foregroundStyle(d >= 0 ? T.good : T.danger)
-            } else if prev != nil { Text(" ").font(.on(12)) }
+            } else { Text(" ").font(.on(12, .bold)) }   // одна высота у всех плиток
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .panel(radius: 18, padding: 14)

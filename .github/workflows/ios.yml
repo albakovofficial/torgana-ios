@@ -1,6 +1,7 @@
 # Сборка приложения Торгана для iPhone на GitHub (Mac не нужен).
 # 1) Каждый push в main и каждый pull request — проверочная сборка под симулятор, без подписи.
 # 2) Тег V1.0.1 (или v1.0.1) либо ручной запуск с галочкой «TestFlight» — подписанная сборка и выгрузка в App Store Connect.
+#    Номер сборки — подряд: ci/build-number + 1, после выгрузки файл обновляется.
 #    Нужны секреты репозитория: APPLE_TEAM_ID, ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8 (см. README.md).
 name: iOS
 
@@ -119,6 +120,8 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.testflight)
     runs-on: ${{ inputs.runner || 'macos-15-intel' }}
     timeout-minutes: 45
+    permissions:
+      contents: write   # записать номер выгруженной сборки (ci/build-number)
     env:
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
@@ -155,9 +158,13 @@ jobs:
             VERSION=$(grep -E 'MARKETING_VERSION:' project.yml | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
           fi
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          echo "BUILD=${{ github.run_number }}" >> "$GITHUB_ENV"
+          # Номер сборки — подряд, только для выгруженных в TestFlight (решение 26.11): прошлый из ci/build-number + 1.
+          # Берём из свежего main: файл обновляет эта же сборка после выгрузки.
+          git fetch -q origin main
+          BUILD=$(( $(git show origin/main:ci/build-number) + 1 ))
+          echo "BUILD=$BUILD" >> "$GITHUB_ENV"
           plutil -replace teamID -string "$APPLE_TEAM_ID" ci/ExportOptions.plist
-          echo "Версия $VERSION, сборка ${{ github.run_number }}"
+          echo "Версия $VERSION, сборка $BUILD"
 
       # Архив подписываем «для себя» (ad-hoc, с нашими entitlements): обычная подпись разработчика требует
       # зарегистрированного iPhone, а для TestFlight она и не нужна. Настоящую подпись App Store ставит экспорт ниже.
@@ -204,6 +211,18 @@ jobs:
           xcrun altool --upload-app -t ios -f "$IPA" --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID" 2>&1 | tee upload.log
           grep -qiE "UPLOAD SUCCEEDED|No errors uploading" upload.log
           echo "Сборка $VERSION ($BUILD) отправлена. Через 10–30 минут она появится в App Store Connect → TestFlight."
+
+      - name: Запомнить номер сборки
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for i in 1 2 3; do
+            git fetch -q origin main && git checkout -q -B build-number origin/main
+            echo "$BUILD" > ci/build-number
+            git add ci/build-number && git commit -qm "Сборка $BUILD выгружена в TestFlight"
+            git push -q "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" HEAD:main && break
+            sleep 5
+          done
 
       - name: Логи
         if: failure()

@@ -487,7 +487,7 @@ struct LoginSheet: View {
             }
             VStack(spacing: 12) {
                 AuthButtons()
-                Button { open(.login) } label: { Label("Войти по почте", systemImage: "envelope") }
+                Button { open(.login) } label: { HStack(spacing: 10) { MailBadge(); Text("Войти по почте") } }
                     .buttonStyle(TButton(kind: .accent, height: 52))
                 Button { open(.register) } label: {
                     (Text("Нет профиля? ").foregroundStyle(T.muted) + Text("Зарегистрироваться").foregroundStyle(T.accent).fontWeight(.bold))
@@ -513,5 +513,14 @@ struct LoginSheet: View {
         app.keepPending = true
         dismiss()
         Task { try? await Task.sleep(nanoseconds: 350_000_000); app.loginFull = mode }
+    }
+}
+
+/// Значок на «Войти по почте» (решение 26.11, «A»): белая плашка, конверт в фирменном градиенте.
+struct MailBadge: View {
+    var body: some View {
+        Image(systemName: "envelope.fill").font(.system(size: 15, weight: .semibold)).foregroundStyle(T.grad)
+            .frame(width: 30, height: 30)
+            .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(.white))
     }
 }

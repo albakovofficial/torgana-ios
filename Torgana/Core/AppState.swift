@@ -26,6 +26,8 @@ final class AppState: ObservableObject {
     /// Что сделать сразу после входа (открыть вкладку, написать продавцу, добавить в избранное).
     private var pending: (@MainActor () async -> Void)?
     @Published var toast: Toast?
+    /// Шторка «Аккаунты» (нажали на своё имя в профиле).
+    @Published var accountsOpen = false
 
     struct Toast: Equatable { let text: String; let bad: Bool; let id = UUID() }
 
@@ -40,7 +42,14 @@ final class AppState: ObservableObject {
         #if DEBUG
         // Снимки экранов: запуск с -route /l/5 сразу открывает нужный экран (данные он грузит сам).
         if let r = UserDefaults.standard.string(forKey: "route"), !r.isEmpty {
-            if r == "/login" || r == "/register" || r == "/ask" {
+            if r == "/accounts" {
+                Task {
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    Accounts.shared.seedDemo()
+                    Nav.shared.tab = .profile
+                    accountsOpen = true
+                }
+            } else if r == "/login" || r == "/register" || r == "/ask" {
                 // окно входа — когда профиль уже загружен (иначе его загрузка закроет окно)
                 Task {
                     try? await Task.sleep(nanoseconds: 3_000_000_000)
@@ -58,6 +67,7 @@ final class AppState: ObservableObject {
             while true {
                 try? await Task.sleep(nanoseconds: 30 * 1_000_000_000)
                 await refreshMe()
+                if !Accounts.shared.others.isEmpty { await Accounts.shared.refreshUnread() }
             }
         }
     }
@@ -77,7 +87,9 @@ final class AppState: ObservableObject {
         let changed = me?.id != r.user?.id
         me = r.user
         meKnown = true
-        if changed && r.user == nil { Nav.shared.reset() }   // вышли — с главной, гостем
+        if let u = r.user { Accounts.shared.remember(u) }
+        // вышли — с главной, гостем (кроме «Добавить аккаунт»: окно входа открывается поверх текущего экрана)
+        if changed && r.user == nil && Accounts.shared.addingFrom == nil { Nav.shared.reset() }
         if changed && r.user != nil, let then = pending { pending = nil; Task { await then() } }
         if changed { Task { await PushManager.shared.sync(); await PushManager.shared.askOnce() } }
         unread = r.unread ?? 0
@@ -101,7 +113,10 @@ final class AppState: ObservableObject {
 
     /// Шторку или экран входа закрыли, не войдя, — начатое действие отменяется.
     func loginClosed() {
-        if me == nil && !keepPending { pending = nil }
+        if me == nil && !keepPending {
+            pending = nil
+            if Accounts.shared.addingFrom != nil { Task { await Accounts.shared.cancelAdding() } }   // передумали добавлять — обратно
+        }
         keepPending = false
     }
 
@@ -166,12 +181,16 @@ final class AppState: ObservableObject {
     }
 
     /// Выйти: push на этот iPhone больше не слать, сессию закрыть на сервере и в страницах сайта.
+    /// Есть другие сохранённые аккаунты — сразу в следующий.
     func logout() async {
+        let id = me?.id
         await PushManager.shared.forget()
         _ = try? await API.shared.post("/api/auth/logout")
         favs = [:]
         await withCheckedContinuation { c in CookieSync.shared.drop { c.resume() } }
+        if let id { Accounts.shared.forget(id) }
         await refreshMe()
+        if let next = Accounts.shared.list.first { await Accounts.shared.switchTo(next) }
     }
 
     /// Нужно войти — открывается экран входа.

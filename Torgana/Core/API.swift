@@ -210,6 +210,21 @@ final class CookieSync: NSObject, WKHTTPCookieStoreObserver {
     /// Ответ сервера продлил сессию (1.59.3: Set-Cookie на /api/me) — запомнить новый срок.
     func remember() { if let c = sid, c.value == lastSid { SessionVault.save(c) } }
 
+    /// Текущая сессия — её запоминает список аккаунтов.
+    var current: (value: String, expires: Double)? {
+        guard let c = sid else { return nil }
+        return (c.value, c.expiresDate?.timeIntervalSince1970 ?? Date().addingTimeInterval(30 * 86400).timeIntervalSince1970)
+    }
+
+    /// Переключиться на сохранённый аккаунт: его сессия — родным экранам, страницам сайта и в Связку ключей.
+    func use(_ value: String, expires: Double, completion: @escaping () -> Void) {
+        drop {
+            guard let c = SessionVault.cookie(value, expires: expires, host: self.host) else { completion(); return }
+            HTTPCookieStorage.shared.setCookie(c)
+            self.adoptNative(completion: completion)
+        }
+    }
+
     /// Выход: «Выйти», удаление профиля или сервер не узнал сессию.
     func drop(completion: (() -> Void)? = nil) {
         for c in HTTPCookieStorage.shared.cookies ?? [] where c.name == name && ours(c) { HTTPCookieStorage.shared.deleteCookie(c) }
@@ -225,33 +240,48 @@ final class CookieSync: NSObject, WKHTTPCookieStoreObserver {
     func cookiesDidChange(in cookieStore: WKHTTPCookieStore) { pullFromWeb() }
 }
 
-/// Сессия в Связке ключей: переживает выгрузку приложения и не зависит от того, успели ли куки записаться на диск.
-enum SessionVault {
-    private static let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
-                                               kSecAttrService as String: "ru.torgana.session",
-                                               kSecAttrAccount as String: "tg_sid"]
-
-    static func save(_ c: HTTPCookie) {
-        let exp = c.expiresDate?.timeIntervalSince1970 ?? Date().addingTimeInterval(30 * 86400).timeIntervalSince1970
-        guard let data = try? JSONEncoder().encode(["v": c.value, "exp": String(exp)]) else { return }
-        SecItemDelete(query as CFDictionary)
-        var add = query
+/// Запись в Связке ключей (только этот iPhone, после первой разблокировки): текущая сессия и сохранённые аккаунты.
+enum Keychain {
+    private static func query(_ account: String) -> [String: Any] {
+        [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: "ru.torgana.session", kSecAttrAccount as String: account]
+    }
+    static func write(_ account: String, _ data: Data) {
+        SecItemDelete(query(account) as CFDictionary)
+        var add = query(account)
         add[kSecValueData as String] = data
         add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         SecItemAdd(add as CFDictionary, nil)
     }
-
-    static func load(host: String) -> HTTPCookie? {
-        var q = query
+    static func read(_ account: String) -> Data? {
+        var q = query(account)
         q[kSecReturnData as String] = true
         q[kSecMatchLimit as String] = kSecMatchLimitOne
         var out: CFTypeRef?
-        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let data = out as? Data,
-              let d = try? JSONDecoder().decode([String: String].self, from: data),
-              let v = d["v"], let exp = Double(d["exp"] ?? ""), exp > Date().timeIntervalSince1970 else { return nil }
-        return HTTPCookie(properties: [.name: "tg_sid", .value: v, .domain: host, .path: "/", .secure: "TRUE",
-                                       .expires: Date(timeIntervalSince1970: exp), HTTPCookiePropertyKey("HttpOnly"): "TRUE"])
+        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess else { return nil }
+        return out as? Data
+    }
+    static func delete(_ account: String) { SecItemDelete(query(account) as CFDictionary) }
+}
+
+/// Сессия в Связке ключей: переживает выгрузку приложения и не зависит от того, успели ли куки записаться на диск.
+enum SessionVault {
+    static func save(_ c: HTTPCookie) {
+        let exp = c.expiresDate?.timeIntervalSince1970 ?? Date().addingTimeInterval(30 * 86400).timeIntervalSince1970
+        guard let data = try? JSONEncoder().encode(["v": c.value, "exp": String(exp)]) else { return }
+        Keychain.write("tg_sid", data)
     }
 
-    static func clear() { SecItemDelete(query as CFDictionary) }
+    static func load(host: String) -> HTTPCookie? {
+        guard let data = Keychain.read("tg_sid"), let d = try? JSONDecoder().decode([String: String].self, from: data),
+              let v = d["v"], let exp = Double(d["exp"] ?? ""), exp > Date().timeIntervalSince1970 else { return nil }
+        return cookie(v, expires: exp, host: host)
+    }
+
+    /// Кука сессии сайта — та же, что ставит сервер (tg_sid, HttpOnly, Secure).
+    static func cookie(_ value: String, expires: Double, host: String) -> HTTPCookie? {
+        HTTPCookie(properties: [.name: "tg_sid", .value: value, .domain: host, .path: "/", .secure: "TRUE",
+                                .expires: Date(timeIntervalSince1970: expires), HTTPCookiePropertyKey("HttpOnly"): "TRUE"])
+    }
+
+    static func clear() { Keychain.delete("tg_sid") }
 }

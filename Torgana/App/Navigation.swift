@@ -151,6 +151,7 @@ struct MainView: View {
         .animation(.easeOut(duration: 0.2), value: nav.barVisible)
         .modifier(ToastHost())
         .sheet(item: $app.ask, onDismiss: { app.loginClosed() }) { LoginSheet(ask: $0) }
+        .sheet(isPresented: $app.accountsOpen) { AccountSheet() }
         .fullScreenCover(item: Binding(get: { app.loginFull.map(LoginFull.init) }, set: { app.loginFull = $0?.mode }),
                          onDismiss: { app.loginClosed() }) { f in NavigationStack { LoginView(start: f.mode) } }
         // Ссылка или push открыли раздел, а профиля нет — на главную и шторка входа.
@@ -233,6 +234,7 @@ struct TabBar: View {
             item(.messages, "message", "Сообщения", badge: app.unread)
             Spacer(minLength: 2)
             item(.profile, "person", "Профиль")
+                .contextMenu { if app.me != nil { AccountMenu() } }   // долгое нажатие — переключить аккаунт
         }
         .padding(.horizontal, 8)
         .frame(height: 64)
@@ -247,9 +249,12 @@ struct TabBar: View {
         let on = nav.tab == tab
         return Button { nav.reselect(tab) } label: {
             HStack(spacing: 8) {
-                Image(systemName: icon)
-                    .font(.system(size: 20, weight: .regular))
-                    .overlay(alignment: .topTrailing) { CountBadge(n: badge).offset(x: 11, y: -8) }
+                Group {
+                    // Вошли — вместо значка своя аватарка (видно, в каком аккаунте вы).
+                    if tab == .profile, let me = app.me { Avatar(name: me.name, url: me.avatar, size: 26) }
+                    else { Image(systemName: icon).font(.system(size: 20, weight: .regular)) }
+                }
+                .overlay(alignment: .topTrailing) { CountBadge(n: badge).offset(x: 11, y: -8) }
                 if on { Text(label).font(.on(14, .semibold)).lineLimit(1).fixedSize() }
             }
             .foregroundStyle(on ? Color.dyn(0x2F53B5, 0x8EA9F7) : T.text)

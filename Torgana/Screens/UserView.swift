@@ -153,6 +153,7 @@ struct WritePicker: View {
 /// скорость ответа, уровень, описание магазина («Читать полностью»), три числа и кнопки (actions).
 /// Своя (own): камера на аватарке и шестерёнка на обложке ведут в настройки профиля; иначе на обложке — «Поделиться».
 struct SellerCard<Actions: View>: View {
+    @EnvironmentObject private var app: AppState
     let user: PublicUser
     var count = 0
     var own = false
@@ -200,10 +201,17 @@ struct SellerCard<Actions: View>: View {
                 .disabled(!own)
                 .accessibilityLabel(own ? "Сменить фото профиля" : u.name)
                 .padding(.top, -42)
-                HStack(spacing: 6) {
-                    Text(shop?.name ?? u.name).font(.on(22, .heavy)).foregroundStyle(T.text)
-                    if u.badges?.official == true || u.badges?.shop == true { Verified(size: 22) }
+                // Своё имя — кнопка: шторка «Аккаунты» (переключить или добавить).
+                Button { app.accountsOpen = true } label: {
+                    HStack(spacing: 6) {
+                        Text(shop?.name ?? u.name).font(.on(22, .heavy)).foregroundStyle(T.text)
+                        if u.badges?.official == true || u.badges?.shop == true { Verified(size: 22) }
+                        if own { Image(systemName: "chevron.down").font(.system(size: 14, weight: .bold)).foregroundStyle(T.muted) }
+                    }
                 }
+                .buttonStyle(.plain)
+                .disabled(!own)
+                .accessibilityHint(own ? "Переключить аккаунт" : "")
                 .padding(.top, 10)
                 Text(sub).font(.on(13.5)).foregroundStyle(T.muted).padding(.top, 3).fixedSize(horizontal: false, vertical: true)
                 Group {

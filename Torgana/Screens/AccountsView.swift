@@ -32,6 +32,7 @@ struct AccountSheet: View {
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .presentationCornerRadius(28)
+        .presentationBackground(T.card)   // непрозрачная: профиль под шторкой не просвечивает
         .task { await accounts.refreshUnread() }
     }
 

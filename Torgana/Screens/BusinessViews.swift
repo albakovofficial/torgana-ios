@@ -730,18 +730,29 @@ private struct StatsView: View {
         .task(id: days) { await load() }
     }
 
+    // Плитка: число, стрелка вверх (зелёная) или вниз (красная) с процентом и «было N за прошлую неделю» — как на сайте.
     private func metric(_ title: String, _ n: Int, _ prev: Int?) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 5) {
             Text(title).font(.on(12.5)).foregroundStyle(T.muted)
             Text(Fmt.number(n)).font(.on(22, .heavy)).foregroundStyle(T.text)
-            if let prev, prev > 0 {
-                let d = Int(((Double(n) - Double(prev)) / Double(prev) * 100).rounded())
-                Text(d >= 0 ? "+\(d)%" : "\(d)%").font(.on(12, .bold)).foregroundStyle(d >= 0 ? T.good : T.danger)
-            } else { Text(" ").font(.on(12, .bold)) }   // одна высота у всех плиток
+            if let prev {
+                let up = n > prev, same = n == prev
+                HStack(spacing: 2) {
+                    Image(systemName: same ? "arrow.right" : up ? "arrow.up" : "arrow.down").font(.system(size: 11, weight: .heavy))
+                    Text(same ? "0%" : prev > 0 ? "\(abs(Int(((Double(n) - Double(prev)) / Double(prev) * 100).rounded())))%" : "новое").font(.on(12.5, .heavy))
+                }
+                .foregroundStyle(same ? T.muted : up ? T.good : T.danger)
+                .padding(.leading, 6).padding(.trailing, 8).frame(height: 22)
+                .background(Capsule().fill(same ? T.surface : up ? T.goodSoft : T.dangerSoft))
+                Text("было \(Fmt.number(prev)) \(Self.past[days] ?? "раньше")").font(.on(11.5)).foregroundStyle(T.muted).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text("активных сейчас").font(.on(11.5)).foregroundStyle(T.muted)
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: 118, alignment: .topLeading)
         .panel(radius: 18, padding: 14)
     }
+    private static let past = ["7": "за прошлую неделю", "30": "за прошлые 30 дней", "90": "за прошлые 90 дней"]
 
     private func load() async {
         do { s = try await API.shared.get("/api/my/shop/stats", query: ["days": days]) }

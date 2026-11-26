@@ -73,6 +73,7 @@ jobs:
           grep -E "\.swift:[0-9]+:[0-9]+: warning:" build.log | sed -E "s|^.*/(Torgana(Tests)?/)|\1|" | sort -u > warnings.txt || true
           echo "Предупреждений в коде приложения: $(wc -l < warnings.txt | tr -d ' ')"
           cat warnings.txt
+          test ! -s warnings.txt   # правило плана: 0 предупреждений
 
       - name: Тесты
         run: |

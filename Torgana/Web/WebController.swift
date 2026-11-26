@@ -201,8 +201,9 @@ final class WebPage: NSObject, ObservableObject, WKNavigationDelegate, WKUIDeleg
         if web.url != nil { web.reload() } else if let u = lastURL { web.load(URLRequest(url: u)) }
     }
 
+    // Тип ответа — точно как в WebKit (@MainActor @Sendable), иначе WebKit не вызывает метод и правила переходов не работают.
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
-                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+                 decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
         decisionHandler(WebController.policy(for: navigationAction))
     }
 
@@ -243,7 +244,7 @@ final class WebPage: NSObject, ObservableObject, WKNavigationDelegate, WKUIDeleg
     }
 
     func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String,
-                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) {
+                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor @Sendable (Bool) -> Void) {
         let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "Отмена", style: .cancel) { _ in completionHandler(false) })
         alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in completionHandler(true) })

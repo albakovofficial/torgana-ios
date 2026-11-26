@@ -136,7 +136,7 @@ final class API: Sendable {
 }
 
 // Любой JSON — для ответов, где нужно одно-два поля.
-enum JSONValue: Codable, Hashable {
+enum JSONValue: Codable, Hashable, Sendable {
     case null, bool(Bool), number(Double), string(String), array([JSONValue]), object([String: JSONValue])
     init(from decoder: Decoder) throws {
         let c = try decoder.singleValueContainer()

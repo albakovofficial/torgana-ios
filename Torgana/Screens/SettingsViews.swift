@@ -77,8 +77,9 @@ private struct ProfileEditForm: View {
                 Avatar(name: app.me?.name ?? "", url: app.me?.avatar, size: 84)
                     .overlay { if uploading { ProgressView().tint(.white).frame(width: 84, height: 84).background(Circle().fill(.black.opacity(0.35))) } }
                 VStack(alignment: .leading, spacing: 8) {
+                    let pick = app.me?.avatar == nil ? "Добавить фото" : "Сменить фото"   // подпись PhotosPicker — @Sendable
                     PhotosPicker(selection: $photo, matching: .images) {
-                        Label(app.me?.avatar == nil ? "Добавить фото" : "Сменить фото", systemImage: "camera")
+                        Label(pick, systemImage: "camera")
                             .font(.on(15, .semibold)).foregroundStyle(T.accent)
                     }
                     if app.me?.avatar != nil {

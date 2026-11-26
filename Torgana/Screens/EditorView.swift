@@ -157,7 +157,7 @@ struct EditorView: View {
         return VStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .top, spacing: 8) {
-                    if let first = photos.first { thumb(first, cell * 2 + 8) } else { picker { bigAdd(cell * 2 + 8) } }
+                    if let first = photos.first { thumb(first, cell * 2 + 8) } else { picker { Self.bigAdd(cell * 2 + 8) } }
                     VStack(spacing: 8) { slot(rest[0], cell); slot(rest[1], cell) }
                 }
                 LazyVGrid(columns: Array(repeating: GridItem(.fixed(cell), spacing: 8), count: 3), alignment: .leading, spacing: 8) {
@@ -172,11 +172,12 @@ struct EditorView: View {
         }
     }
 
-    private func picker<L: View>(@ViewBuilder _ label: () -> L) -> some View {
+    // Подпись кнопки галереи PhotosPicker собирается вне главного потока (@Sendable) — только из готовых значений.
+    private func picker<L: View>(@ViewBuilder _ label: @escaping @Sendable () -> L) -> some View {
         PhotosPicker(selection: $picked, maxSelectionCount: max(1, 10 - photos.count), matching: .images, label: label)
     }
 
-    private func bigAdd(_ size: CGFloat) -> some View {
+    private nonisolated static func bigAdd(_ size: CGFloat) -> some View {
         VStack(spacing: 8) {
             Image(systemName: "camera").font(.system(size: 30, weight: .medium))
             Text("Добавить фото").font(.on(16, .bold))

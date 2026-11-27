@@ -127,14 +127,14 @@ final class Accounts: ObservableObject {
     }
 
     #if DEBUG
-    /// Снимок «/accounts»: ещё два аккаунта рядом с демо-профилем.
+    /// Снимок «/accounts»: ещё два тестовых аккаунта рядом с демо-профилем (только тестовые имена и адреса example.com).
     func seedDemo() {
         guard list.count < 2 else { return }
         if let me = AppState.shared.me, !list.contains(where: { $0.id == me.id }) {
             list.append(Saved(id: me.id, name: me.name, avatar: me.avatar, email: me.email, verified: false, sid: "demo", exp: Date().timeIntervalSince1970 + 86400))
         }
-        list += [Saved(id: 90, name: "ALBAKOV", avatar: nil, email: "shop@albakov.ru", verified: true, sid: "demo", exp: Date().timeIntervalSince1970 + 86400),
-                 Saved(id: 91, name: "Мария", avatar: nil, email: "maria@mail.ru", verified: false, sid: "demo", exp: Date().timeIntervalSince1970 + 86400)]
+        list += [Saved(id: 90, name: "Тестовый магазин", avatar: nil, email: "shop@example.com", verified: true, sid: "demo", exp: Date().timeIntervalSince1970 + 86400),
+                 Saved(id: 91, name: "Мария Тестова", avatar: nil, email: "maria@example.com", verified: false, sid: "demo", exp: Date().timeIntervalSince1970 + 86400)]
         unread[90] = 3
     }
     #endif

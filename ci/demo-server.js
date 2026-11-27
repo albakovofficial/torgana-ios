@@ -11,7 +11,7 @@ const H = 3600e3;
 const config = JSON.parse(fs.readFileSync(path.join(DIR, 'config.json'), 'utf8'));
 
 const seller = { id: 2, name: 'Анна Смирнова', avatar: null, level: 2, shop: false };
-const me = { id: 1, name: 'Ибрагим', email: 'demo@torgana.ru', city: 'Москва', avatar: null, isAdmin: true, phone: '', emailVerified: true,
+const me = { id: 1, name: 'Иван Тестов', email: 'ivan@example.com', avatar: null, isAdmin: true, phone: '', emailVerified: true,
   pushMessages: true, pushSearches: true, pushPrices: false, pushModeration: true, notifyMessages: true, notifyDigest: false, notifyModeration: true, createdAt: now - 20 * 24 * H,
   rep: { level: 1, levelName: 'Проверенный', deals: 3 }, badges: { official: false, shop: false, first: { no: 7, form: 'm', own: '' } }, deactivatedAt: null };
 const items = [
@@ -71,7 +71,7 @@ http.createServer((req, res) => {
     pinned: [], promotions: [{ id: 1, listingId: 2, title: 'iPhone 15 Pro 256 ГБ, как новый', status: 'active', endsAt: now + 6 * 24 * H, shows: 3120, clicks: 94, note: '' }],
     payments: [{ id: 2, title: 'Продвижение объявления на 7 дн. на Торгане', amount: 199, status: 'succeeded', method: 'Банковская карта', refunded: 0, createdAt: now - 24 * H },
       { id: 1, title: 'Тариф «Магазин» на Торгане, 1 мес. (30 дней)', amount: 490, status: 'succeeded', method: 'СБП', refunded: 0, createdAt: now - 13 * 24 * H }] });
-  if (p === '/api/me/trademark') return json(res, { trademark: null, code: 'TG-4F2A9C', letter: 'Подтверждаю, что аккаунт demo@torgana.ru на сайте torgana.ru принадлежит ______ …\nКод заявки: TG-4F2A9C', docs: [], kinds: { cert: 'Свидетельство или выписка из реестра', letter: 'Письмо-подтверждение с кодом', power: 'Доверенность' } });
+  if (p === '/api/me/trademark') return json(res, { trademark: null, code: 'TG-4F2A9C', letter: 'Подтверждаю, что аккаунт ivan@example.com на сайте torgana.ru принадлежит ______ …\nКод заявки: TG-4F2A9C', docs: [], kinds: { cert: 'Свидетельство или выписка из реестра', letter: 'Письмо-подтверждение с кодом', power: 'Доверенность' } });
   if (p === '/api/my/shop/stats') { const n = Number(u.searchParams.get('days') || 30); return json(res, { period: n, totals: { impressions: 18400, views: 1240, favs: 41 }, prev: { impressions: 15100, views: 1410, favs: 38 },
     daily: Array.from({ length: n }, (_, i) => ({ day: `d${i}`, impressions: 500, views: 20 + Math.round(30 * Math.abs(Math.sin(i / 3))), favs: 1 })), active: 6,
     listings: items.slice(0, 5).map((x, i) => ({ id: x.id, title: x.title, photo: x.photo, views: 412 - i * 60, favs: 31 - i * 4, impressions: 4000 })) }); }

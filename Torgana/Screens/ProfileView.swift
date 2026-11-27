@@ -68,9 +68,9 @@ struct ProfileView: View {
             }
         }
     }
-
 }
 
+@MainActor
 final class MyListingsStore: ObservableObject {
     @Published var items: [MyListing] = []
     @Published var loading = true

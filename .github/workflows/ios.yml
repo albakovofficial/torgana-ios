@@ -110,8 +110,12 @@ jobs:
                   *"#bottom") route="${r%#bottom}"; extra="-bottom YES" ;;
                   "/new#step"*) route="/new"; extra="-step ${r##*#step}" ;;
                 esac
+                # ждём, пока экран сходит за данными и запросы к демо-серверу затихнут: иначе на медленном симуляторе снимаются крутилка и «Пока пусто»
+                start=$(stat -f%z demo.log)
                 xcrun simctl launch --terminate-running-process "$UDID" ru.torgana.app -base http://127.0.0.1:8787 -route "$route" $extra > /dev/null
-                sleep 10
+                for w in $(seq 1 40); do sleep 1; [ "$(stat -f%z demo.log)" -gt "$start" ] && break; done
+                last=0; for w in $(seq 1 15); do cur=$(stat -f%z demo.log); [ "$cur" = "$last" ] && break; last=$cur; sleep 3; done
+                sleep 3
                 for k in 1 2 3; do
                   xcrun simctl io "$UDID" screenshot "$f" > /dev/null
                   [ "$(stat -f%z "$f")" -gt 150000 ] && break 2

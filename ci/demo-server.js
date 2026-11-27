@@ -29,7 +29,7 @@ const listing = (c) => ({
     condition: 'used', bargain: true, exchange: c.id === 5, views: 128, favCount: 9, updatedAt: c.createdAt, photos: [c.photo, `/demo/p${(c.id) % 6}.jpg`, `/demo/p${(c.id + 1) % 6}.jpg`],
     isOwner: false, specs: c.id === 5 ? [{ label: 'Марка', value: 'Lada' }, { label: 'Модель', value: 'Vesta' }, { label: 'Год выпуска', value: 2021 }, { label: 'Пробег', value: '48 000 км' }, { label: 'Коробка', value: 'Механика' }] : [{ label: 'Состояние', value: 'Б/у, отличное' }],
     rejectReason: '' },
-  seller: { id: 2, name: 'Анна Смирнова', city: c.city, avatar: null, createdAt: now - 60 * 24 * H, activeCount: 6, rep: { level: 2, levelName: 'Опытный', deals: 34 },
+  seller: { id: 2, name: 'Анна Смирнова', avatar: null, activeCount: 6, rep: { level: 2, levelName: 'Опытный', deals: 34 },
     badges: { official: false, shop: false, first: { no: 3, form: 'f' } }, followers: 12, following: false },
   similar: items.filter((x) => x.id !== c.id).slice(0, 4)
 });
@@ -89,14 +89,15 @@ http.createServer((req, res) => {
       readUpTo: 3, typing: true, messages: msgs.filter((x) => x.id > after) });
   }
   m = /^\/api\/users\/(\d+)$/.exec(p);
-  if (m && m[1] === '3') return json(res, { user: { id: 3, name: 'Торгана', city: 'Санкт-Петербург', avatar: null, createdAt: now - 20 * 24 * H, activeCount: 0, emailVerified: true, rep: { level: 0, levelName: 'Новичок', deals: 0, newbie: true, tags: [], marks: [] }, badges: { official: true }, followers: 0, following: false, block: null,
+  if (m && m[1] === '3') return json(res, { user: { id: 3, name: 'Торгана', avatar: null, activeCount: 0, emailVerified: true, rep: { level: 0, levelName: 'Новичок', deals: 0, newbie: true, tags: [], marks: [] }, badges: { official: true }, followers: 0, following: false, block: null,
     shop: { official: true, name: 'Торгана', cover: null, about: 'Официальный аккаунт Торганы — площадки объявлений по всей России. Сторгуемся!\n\nРазмещать объявления — бесплатно и без лимитов, для частных лиц и для компаний. Каждое объявление проверяет модератор, а репутация продавца строится на подтверждённых сделках.\n\nЕсть вопрос или что-то пошло не так — напишите в «Поддержку Торганы» в «Сообщениях»: отвечают люди, а не бот.' } }, sections: [], pinned: [] });
-  if (m) return json(res, { user: { ...listing(items[0]).seller, id: Number(m[1]), emailVerified: true, block: null }, sections: [], pinned: [] });
+  // свой профиль (/u/1) — с именем демо-пользователя, остальные — продавец Анна
+  if (m) return json(res, { user: { ...listing(items[0]).seller, id: Number(m[1]), ...(m[1] === '1' ? { name: me.name } : {}), emailVerified: true, block: null }, sections: [], pinned: [] });
   if (p === '/api/pages/rules') return json(res, { title: 'Правила размещения', html: '<p>Все объявления на Торгане проходят модерацию. Объявление публикуется, если оно соответствует правилам.</p><h2>Запрещено</h2><ul><li>оружие и боеприпасы;</li><li>лекарства по рецепту;</li><li>поддельные товары.</li></ul><p>Подробнее — в <a href="/page/terms">пользовательском соглашении</a>.</p>' });
   if (p === '/api/support') return json(res, { messages: [] });
   if (p === '/api/my/listings') return json(res, { items: items.slice(0, 3).map((x, i) => ({ ...x, status: ['active', 'pending', 'active'][i], views: 40 + i * 13, favCount: i * 2, rejectReason: '' })) });
   if (p === '/api/admin/stats') return json(res, { pending: 4, reports: 2, support: 1, appeals: 0, biz: 0, rep: 0 });
-  if (p === '/api/blocks') return json(res, { items: [{ id: 9, name: 'Спамер Иван', avatar: null, at: now - 3 * 24 * H }] });
+  if (p === '/api/blocks') return json(res, { items: [{ id: 9, name: 'Спам-аккаунт', avatar: null, at: now - 3 * 24 * H }] });
   if (p === '/api/notices') return json(res, { items: notices, unread: 2 });
   if (p.startsWith('/api/')) return json(res, { ok: true });
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });

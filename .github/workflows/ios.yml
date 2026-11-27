@@ -114,8 +114,9 @@ jobs:
                 start=$(stat -f%z demo.log)
                 xcrun simctl launch --terminate-running-process "$UDID" ru.torgana.app -base http://127.0.0.1:8787 -route "$route" $extra > /dev/null
                 for w in $(seq 1 40); do sleep 1; [ "$(stat -f%z demo.log)" -gt "$start" ] && break; done
-                last=0; for w in $(seq 1 15); do cur=$(stat -f%z demo.log); [ "$cur" = "$last" ] && break; last=$cur; sleep 3; done
-                sleep 3
+                # тишина — 6 секунд подряд без новых запросов (экран объявления догружает данные позже остальных)
+                last=0; quiet=0; for w in $(seq 1 30); do cur=$(stat -f%z demo.log); if [ "$cur" = "$last" ]; then quiet=$((quiet+1)); [ $quiet -ge 3 ] && break; else quiet=0; fi; last=$cur; sleep 2; done
+                sleep 2
                 for k in 1 2 3; do
                   xcrun simctl io "$UDID" screenshot "$f" > /dev/null
                   [ "$(stat -f%z "$f")" -gt 150000 ] && break 2

@@ -38,6 +38,15 @@ struct ProfileView: View {
         .sitePage()
         .refreshable { await app.refreshMe(); await reload() }
         .task(id: app.me?.id) { await reload() }
+        .onAppear(perform: openList)
+        .onChange(of: nav.profileList) { _, _ in openList() }
+    }
+
+    /// Открыли профиль из push — сразу на нужной вкладке своих объявлений.
+    private func openList() {
+        guard let t = nav.profileList else { return }
+        if MyListingsSection.tabs.contains(where: { $0.0 == t }) { tab = "ads"; store.tab = t }
+        nav.profileList = nil
     }
 
     private func reload() async {
@@ -175,7 +184,7 @@ struct MyListingsSection: View {
     @ObservedObject var store: MyListingsStore
     @EnvironmentObject private var nav: Nav
 
-    private static let tabs = [("active", "Активные"), ("pending", "На проверке"), ("rejected", "На исправлении"), ("archived", "Архив")]
+    static let tabs = [("active", "Активные"), ("pending", "На проверке"), ("rejected", "На исправлении"), ("archived", "Архив")]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {

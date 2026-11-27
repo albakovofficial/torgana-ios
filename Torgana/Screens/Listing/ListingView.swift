@@ -252,6 +252,7 @@ struct ListingView: View {
         let text: String = {
             switch l.status {
             case "pending": return "Объявление на проверке у модератора — его пока видите только вы."
+            case "scheduled": return "Проверено модератором — опубликуется в выбранное вами время. Пока его видите только вы."
             case "rejected": return "Нужно исправить" + ((l.rejectReason ?? "").isEmpty ? "" : ": \(l.rejectReason!)")
             case "sold": return "Продано"
             case "archived": return "Снято с публикации"

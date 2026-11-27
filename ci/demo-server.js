@@ -12,7 +12,7 @@ const config = JSON.parse(fs.readFileSync(path.join(DIR, 'config.json'), 'utf8')
 
 const seller = { id: 2, name: 'Анна Смирнова', avatar: null, level: 2, shop: false };
 const me = { id: 1, name: 'Иван Тестов', email: 'ivan@example.com', avatar: null, isAdmin: true, phone: '', emailVerified: true,
-  pushMessages: true, pushSearches: true, pushPrices: false, pushModeration: true, notifyMessages: true, notifyDigest: false, notifyModeration: true, createdAt: now - 20 * 24 * H,
+  pushMessages: true, pushSearches: true, pushPrices: false, pushModeration: true, pushDeals: true, pushMoney: true, notifyMessages: true, notifyDigest: false, notifyModeration: true, createdAt: now - 20 * 24 * H,
   rep: { level: 1, levelName: 'Проверенный', deals: 3 }, badges: { official: false, shop: false, first: { no: 7, form: 'm', own: '' } }, deactivatedAt: null };
 const items = [
   ['Велосипед Merida Big Nine 2023', 45000, 'Казань', 'hobby', 'hobby'], ['iPhone 15 Pro 256 ГБ, как новый', 89990, 'Москва', 'electronics', 'phones'],

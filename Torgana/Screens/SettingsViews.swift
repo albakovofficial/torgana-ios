@@ -251,11 +251,13 @@ private struct NotifySettings: View {
 
     // Как NOTIFY_ROWS сайта: название, пояснение, поле push, поле письма.
     private static let rows: [(String, String, String?, String?)] = [
-        ("Сообщения", "Чаты и ответы поддержки. Письмо — если не прочитали за 5 минут", "pushMessages", "notifyMessages"),
+        ("Сообщения", "Чаты с покупателями и продавцами, ответы поддержки. Письмо — если не прочитали за 5 минут", "pushMessages", "notifyMessages"),
+        ("Мои объявления", "Проверка модератором, апелляции, срок публикации", "pushModeration", "notifyModeration"),
+        ("Сделки и репутация", "Подтверждение сделок, отметки, уровень, жалобы", "pushDeals", nil),
+        ("Бизнес и оплата", "Оплаты и возвраты, тариф, продвижение, проверка бизнеса", "pushMoney", nil),
         ("Подписки", "Новые объявления продавцов, на которых вы подписаны", "pushSearches", nil),
         ("Снижение цены", "Подешевело то, что у вас в избранном", "pushPrices", nil),
-        ("Подборка за день", "Новое у продавцов и снижение цен — одним письмом", nil, "notifyDigest"),
-        ("Объявления и сделки", "Решения модерации, срок публикации, сделки и репутация", "pushModeration", "notifyModeration")
+        ("Подборка за день", "Новое у продавцов и снижение цен — одним письмом", nil, "notifyDigest")
     ]
 
     var body: some View {
@@ -288,6 +290,8 @@ private struct NotifySettings: View {
         case "pushSearches": return me.pushSearches ?? false
         case "pushPrices": return me.pushPrices ?? false
         case "pushModeration": return me.pushModeration ?? false
+        case "pushDeals": return me.pushDeals ?? false
+        case "pushMoney": return me.pushMoney ?? false
         case "notifyMessages": return me.notifyMessages ?? false
         case "notifyDigest": return me.notifyDigest ?? false
         case "notifyModeration": return me.notifyModeration ?? false

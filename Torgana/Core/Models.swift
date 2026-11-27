@@ -117,6 +117,8 @@ struct Me: Codable, Hashable {
     let pushSearches: Bool?
     let pushPrices: Bool?
     let pushModeration: Bool?
+    let pushDeals: Bool?
+    let pushMoney: Bool?
     let notifyMessages: Bool?
     let notifyDigest: Bool?
     let notifyModeration: Bool?

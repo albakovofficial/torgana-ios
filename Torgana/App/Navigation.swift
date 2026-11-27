@@ -59,6 +59,8 @@ final class Nav: ObservableObject {
     @Published var barHidden = 0
     /// Подача объявления во вкладке «+»: внизу своя панель «Назад / Далее».
     @Published var editorDock = false
+    /// Вкладка своих объявлений, которую открыть в профиле (из push: «/profile?status=scheduled» — «На проверке»).
+    @Published var profileList: String?
     var barVisible: Bool { barHidden <= 0 && !(tab == .post && editorDock) }
 
     func path(_ tab: Tab) -> Binding<[Route]> {
@@ -81,7 +83,11 @@ final class Nav: ObservableObject {
         case "/": tab = .home; paths[.home] = []; return
         case "/favorites": tab = .favorites; paths[.favorites] = []; return
         case "/new": tab = .post; paths[.post] = []; return
-        case "/profile": tab = .profile; paths[.profile] = []; return
+        case "/profile":
+            // ?status=… — сразу нужная вкладка своих объявлений: запланированные — «На проверке», снятые и проданные — «Архив».
+            let st = URLComponents(string: clean)?.queryItems?.first { $0.name == "status" }?.value
+            profileList = st.map { ["scheduled": "pending", "sold": "archived"][$0] ?? $0 }
+            tab = .profile; paths[.profile] = []; return
         case "/profile/listings": tab = .profile; paths[.profile] = []; return   // свои объявления — первая вкладка профиля
         case "/profile/settings": tab = .profile; paths[.profile] = []; return   // настройки — в профиле
         default: break

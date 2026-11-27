@@ -32,7 +32,7 @@ jobs:
     # Для выгрузки в TestFlight отдельная проверочная сборка не нужна: архив и так всё собирает (и Mac на GitHub бывает в дефиците).
     if: ${{ !startsWith(github.ref, 'refs/tags/') && !(github.event_name == 'workflow_dispatch' && inputs.testflight) }}
     runs-on: ${{ inputs.runner || 'macos-15-intel' }}
-    timeout-minutes: 40
+    timeout-minutes: 75   # снимки ждут загрузки каждого экрана — 58 экранов идут ~40 минут
     permissions:
       contents: write
     steps:

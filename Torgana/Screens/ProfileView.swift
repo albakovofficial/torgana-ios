@@ -316,8 +316,7 @@ struct NoticesView: View {
                         ForEach(items) { n in
                             Button { if let u = n.url, !u.isEmpty { nav.open(path: u) } } label: {
                                 HStack(alignment: .top, spacing: 12) {
-                                    Image(systemName: icon(n))
-                                        .font(.system(size: 16, weight: .semibold))
+                                    Glyph(name: icon(n), size: 16)
                                         .foregroundStyle(n.tone == "bad" ? T.danger : n.tone == "ok" ? T.good : T.accent)
                                         .frame(width: 40, height: 40)
                                         .background(Circle().fill(n.tone == "bad" ? T.dangerSoft : n.tone == "ok" ? T.goodSoft : T.accentSoft))
@@ -360,7 +359,7 @@ struct NoticesView: View {
         case "medal": return "rosette"
         case "price", "tag": return "tag"
         case "clock": return "clock"
-        case "star": return "star"
+        case "handshake", "star": return "asset:Handshake"
         case "user", "follow": return "person"
         default: return "bell"
         }

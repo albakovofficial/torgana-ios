@@ -34,6 +34,21 @@ enum Tone: String {
     }
 }
 
+/// Значок: символ iPhone или свой рисунок из Assets («asset:Handshake» — рукопожатие репутации, его нет среди символов).
+struct Glyph: View {
+    let name: String
+    var size: CGFloat
+    var weight: Font.Weight = .semibold
+
+    var body: some View {
+        if name.hasPrefix("asset:") {
+            Image(String(name.dropFirst(6))).renderingMode(.template).resizable().scaledToFit().frame(width: size * 1.2, height: size * 1.2)
+        } else {
+            Image(systemName: name).font(.system(size: size, weight: weight))
+        }
+    }
+}
+
 /// Плитка со значком: скруглённый квадрат с градиентом тона, белый значок.
 struct ToneTile: View {
     let icon: String
@@ -41,8 +56,7 @@ struct ToneTile: View {
     var size: CGFloat = 40
 
     var body: some View {
-        Image(systemName: icon)
-            .font(.system(size: size * 0.42, weight: .semibold))
+        Glyph(name: icon, size: size * 0.42)
             .foregroundStyle(.white)
             .frame(width: size, height: size)
             .background(RoundedRectangle(cornerRadius: size * 0.32, style: .continuous).fill(tone.gradient))
@@ -102,7 +116,7 @@ struct WebCover: Equatable {
     var toneValue: Tone { Tone(rawValue: tone) ?? .blue }
 
     private static let symbols = [
-        "info": "info", "search": "magnifyingglass", "tag": "tag.fill", "shield": "shield.fill", "star": "star.fill",
+        "info": "info", "search": "magnifyingglass", "tag": "tag.fill", "shield": "shield.fill", "handshake": "asset:Handshake",
         "list": "list.bullet", "chat": "bubble.left.and.bubble.right.fill", "edit": "doc.text.fill", "lock": "lock.fill",
         "check": "checkmark", "store": "storefront.fill", "chart": "chart.bar.fill", "users": "person.2.fill",
         "heart": "heart.fill", "gear": "gearshape.fill"

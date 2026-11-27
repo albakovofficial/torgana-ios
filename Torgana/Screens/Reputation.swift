@@ -41,7 +41,7 @@ struct RepCard: View {
             if let marks = r?.marks, !marks.isEmpty {
                 FlowLayout(spacing: 6) {
                     ForEach(marks, id: \.self) { m in
-                        Label(Self.marks[m] ?? m, systemImage: "star.fill").font(.on(12.5, .semibold)).foregroundStyle(T.text2)
+                        Label(Self.marks[m] ?? m, systemImage: "checkmark").font(.on(12.5, .semibold)).foregroundStyle(T.text2)
                             .padding(.horizontal, 10).padding(.vertical, 6).background(Capsule().fill(T.surface))
                     }
                 }

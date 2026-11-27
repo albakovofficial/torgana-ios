@@ -269,15 +269,14 @@ struct SellerCard<Actions: View>: View {
         .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).strokeBorder(T.line, lineWidth: 1))
     }
 
-    /// Кнопка в углу: своя — шестерёнка (настройки профиля), чужая — «Поделиться». На обложке — белая на тёмном, без обложки — на сером.
+    /// Кнопка в углу чужого профиля — «Поделиться». В своём её нет: шестерёнка дублировала «Изменить профиль» (1.66.0).
+    /// На обложке — белая на тёмном, без обложки — на сером.
     @ViewBuilder private func corner(dark: Bool) -> some View {
         let icon = { (name: String) in
             Image(systemName: name).font(.system(size: 16, weight: .semibold)).foregroundStyle(dark ? .white : T.text)
                 .frame(width: 40, height: 40).background(Circle().fill(dark ? Color.black.opacity(0.18) : T.surface))
         }
-        if own {
-            Button { nav.push(.settings(.profile)) } label: { icon("gearshape") }.buttonStyle(.plain).accessibilityLabel("Настройки профиля")
-        } else {
+        if !own {
             ShareLink(item: API.shared.url("/u/\(user.id)"), subject: Text(user.name)) { icon("square.and.arrow.up") }.accessibilityLabel("Поделиться")
         }
     }

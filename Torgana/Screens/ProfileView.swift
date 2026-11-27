@@ -9,7 +9,6 @@ struct ProfileView: View {
     @EnvironmentObject private var nav: Nav
     @StateObject private var store = MyListingsStore()
     @State private var pub: PublicUser?
-    @State private var admin: AdminStats?
     @State private var tab = "ads"
 
     var body: some View {
@@ -21,13 +20,12 @@ struct ProfileView: View {
                     } else {
                         LoadingView()
                     }
-                    Seg(items: [("ads", "Объявления"), ("rep", "Репутация"), ("more", "Ещё")], value: $tab,
-                        counts: (app.unread + (admin?.total ?? 0)) > 0 ? ["more": app.unread + (admin?.total ?? 0)] : [:],
+                    // 1.66.0: только «Объявления» и «Репутация»; всё из бывшего «Ещё» — в меню ≡ (SiteMenu, вариант A «Плитки»).
+                    Seg(items: [("ads", "Объявления"), ("rep", "Репутация")], value: $tab,
                         level: ("rep", pub?.rep?.level ?? me.rep?.level ?? 0))
                         .padding(.top, 18)
                     switch tab {
                     case "rep": ReputationPanel(rep: pub?.rep).padding(.top, 14)
-                    case "more": more(me).padding(.top, 14)
                     default: MyListingsSection(store: store).padding(.top, 14)
                     }
                 }
@@ -53,7 +51,6 @@ struct ProfileView: View {
         guard let me = app.me else { return }
         if let r: UserResponse = try? await API.shared.get("/api/users/\(me.id)") { pub = r.user }
         await store.load()
-        if me.isAdmin == true { admin = try? await API.shared.get("/api/admin/stats") }
     }
 
     private var active: Int { store.items.filter { $0.status == "active" }.count }
@@ -72,80 +69,8 @@ struct ProfileView: View {
         }
     }
 
-    // «Ещё»: разделы, модерация (только администраторам), настройки, помощь, выход.
-    private func more(_ me: Me) -> some View {
-        VStack(alignment: .leading, spacing: 22) {
-            if me.isAdmin == true { moderation }
-            SettingsGroup {
-                SettingsRow(icon: "message.fill", color: Tint.green, title: "Сообщения",
-                            sub: app.unread > 0 ? "\(app.unread) \(Fmt.plural(app.unread, "новое", "новых", "новых"))" : "Переписки с покупателями и продавцами",
-                            badge: app.unread) { nav.open(path: "/messages") }
-                SettingsRow(icon: "star.fill", color: Tint.orange, title: "Сделки и отзывы",
-                            sub: (me.rep?.deals ?? 0) > 0 ? "\(me.rep?.deals ?? 0) \(Fmt.plural(me.rep?.deals ?? 0, "сделка", "сделки", "сделок"))" : "Пока нет") { nav.push(.web("/profile/reputation")) }
-                SettingsRow(icon: "person.2.fill", color: Tint.violet, title: "Подписки", sub: "Продавцы и новинки", last: true) { nav.push(.web("/profile/following")) }
-            }
-            SettingsGroup(title: "Настройки") {
-                ForEach([SettingsSection.profile, .notify, .look, .blocks], id: \.self) { s in
-                    SettingsRow(icon: s.icon, color: s.tone.color, title: s.title, sub: s.sub) { nav.push(.settings(s)) }
-                }
-                SettingsRow(icon: BizSection.hub.icon, color: BizSection.hub.tone.color, title: BizSection.hub.title, sub: "Витрина, статистика, значок «ИП проверен»", last: true) { nav.push(.business(.hub)) }
-            }
-            SettingsGroup(title: "Помощь") {
-                SettingsRow(icon: "headphones", color: Tint.green, title: "Поддержка", sub: "Отвечают люди, а не боты") { nav.push(.support) }
-                SettingsRow(icon: "questionmark", color: Tint.sky, title: "Помощь и безопасность") { nav.push(.web("/page/help")) }
-                SettingsRow(icon: "doc.text", color: Tint.gray, title: "Правила и документы", last: true) { nav.push(.web("/page/rules")) }
-            }
-            VStack(spacing: 12) {
-                Button { app.askLogout = true } label: {
-                    Label("Выйти", systemImage: "rectangle.portrait.and.arrow.right")
-                        .font(.on(16, .semibold)).foregroundStyle(T.danger)
-                        .frame(maxWidth: .infinity).frame(height: 50)
-                        .background(Capsule().fill(T.card))
-                        .overlay(Capsule().strokeBorder(T.line, lineWidth: 1))
-                }
-                .buttonStyle(.plain)
-                Text("Торгана \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "") (\(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""))")
-                    .font(.on(12)).foregroundStyle(T.faint).frame(maxWidth: .infinity)
-            }
-        }
-    }
-
-    // Модерация — только администраторам: что ждёт решения; открывается модерация сайта.
-    private var moderation: some View {
-        let a = admin
-        let parts: [String] = [
-            (a?.pending ?? 0) > 0 ? "\(a!.pending!) на проверке" : nil,
-            (a?.reports ?? 0) > 0 ? "\(a!.reports!) \(Fmt.plural(a!.reports!, "жалоба", "жалобы", "жалоб"))" : nil,
-            (a?.support ?? 0) > 0 ? "\(a!.support!) в поддержке" : nil,
-            (a?.appeals ?? 0) > 0 ? "\(a!.appeals!) \(Fmt.plural(a!.appeals!, "обжалование", "обжалования", "обжалований"))" : nil
-        ].compactMap { $0 }
-        return Button { nav.push(.web("/admin")) } label: {
-            HStack(spacing: 12) {
-                Image(systemName: "checkmark.shield.fill").font(.system(size: 19, weight: .semibold)).foregroundStyle(.white)
-                    .frame(width: 40, height: 40)
-                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(T.accentFill))
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Модерация").font(.on(15.5, .bold)).foregroundStyle(T.text)
-                    Text(a == nil ? "Загружаем…" : parts.isEmpty ? "Всё разобрано" : parts.joined(separator: " · "))
-                        .font(.on(12.5)).foregroundStyle(T.muted).lineLimit(2)
-                }
-                Spacer(minLength: 6)
-                if let t = a?.total, t > 0 {
-                    Text("\(t)").font(.on(12, .bold)).foregroundStyle(.white)
-                        .padding(.horizontal, 7).frame(minWidth: 24, minHeight: 24).background(Capsule().fill(T.danger))
-                }
-                Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundStyle(T.faint)
-            }
-            .padding(.horizontal, 14).padding(.vertical, 12)
-            .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(T.card))
-            .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(T.accent, lineWidth: 1.5))
-        }
-        .buttonStyle(.plain)
-    }
 }
 
-// Мои объявления: загрузка и смена статуса — одно место для профиля и отдельной страницы.
-@MainActor
 final class MyListingsStore: ObservableObject {
     @Published var items: [MyListing] = []
     @Published var loading = true

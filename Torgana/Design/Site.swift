@@ -96,42 +96,108 @@ struct SiteMenu: View {
     @EnvironmentObject private var app: AppState
     @EnvironmentObject private var nav: Nav
     @Environment(\.dismiss) private var dismiss
+    @State private var admin: AdminStats?
+
+    // 1.66.0, вариант A «Плитки» (выбор владельца 27.11): всё из бывшего «Ещё» профиля. Без повторов —
+    // «Сообщения» во вкладке снизу, «Репутация» во вкладке профиля, «Выйти» — один раз.
+    private struct TileItem: Identifiable { let id: String; let icon: String; let tone: Tone; let title: String; let sub: String; let path: String }
+    private var tiles: [TileItem] {
+        [TileItem(id: "following", icon: "person.2.fill", tone: .purple, title: "Подписки", sub: "Продавцы и новинки", path: "/profile/following"),
+         TileItem(id: "notify", icon: SettingsSection.notify.icon, tone: SettingsSection.notify.tone, title: "Уведомления", sub: "Push и письма", path: "/profile/settings#sn"),
+         TileItem(id: "biz", icon: BizSection.hub.icon, tone: BizSection.hub.tone, title: "Для бизнеса", sub: "Витрина, статистика", path: "/profile/business"),
+         TileItem(id: "profile", icon: SettingsSection.profile.icon, tone: SettingsSection.profile.tone, title: "Профиль", sub: "Фото, имя, вход", path: "/profile/settings#sf"),
+         TileItem(id: "look", icon: SettingsSection.look.icon, tone: SettingsSection.look.tone, title: "Оформление", sub: SettingsSection.look.sub, path: "/profile/settings#s-look"),
+         TileItem(id: "blocks", icon: SettingsSection.blocks.icon, tone: SettingsSection.blocks.tone, title: "Чёрный список", sub: "Кому нельзя писать", path: "/profile/settings#s-block")]
+    }
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 12) {
                 if let me = app.me {
                     Button { go("/profile") } label: {
                         HStack(spacing: 12) {
                             Avatar(name: me.name, url: me.avatar, size: 48)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(me.name).font(.on(17, .bold)).foregroundStyle(T.text)
-                                Text("Профиль и настройки").font(.on(13)).foregroundStyle(T.muted)
+                                Text("Мой профиль").font(.on(13)).foregroundStyle(T.muted)
                             }
                             Spacer()
                             Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundStyle(T.faint)
                         }
                         .padding(14)
-                        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(T.surface))
+                        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(T.accentSoft))
                     }
                     .buttonStyle(.plain)
-                    // Под профилем — «Сменить аккаунт» и «Выйти» (решение 27.11, вариант B).
-                    HStack(spacing: 8) {
-                        pill("Сменить аккаунт", "arrow.left.arrow.right", T.text) { then { app.accountsOpen = true } }
-                        pill("Выйти", "rectangle.portrait.and.arrow.right", T.danger) { then { app.askLogout = true } }
+                    if me.isAdmin == true { moderation }
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
+                        ForEach(tiles) { t in
+                            Button { go(t.path) } label: {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    ToneTile(icon: t.icon, tone: t.tone, size: 36)
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text(t.title).font(.on(15, .bold)).foregroundStyle(T.text).lineLimit(1)
+                                        Text(t.sub).font(.on(12.5)).foregroundStyle(T.muted).lineLimit(1)
+                                    }
+                                }
+                                .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+                                .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(T.card))
+                                .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(T.line, lineWidth: 1))
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                 } else {
                     Button("Войти или зарегистрироваться") { dismiss(); app.requireLogin(Tab.profile.loginAsk) }.buttonStyle(TButton(kind: .dark))
                 }
                 SettingsGroup {
-                    SettingsRow(icon: "headphones", color: Tint.green, title: "Поддержка", sub: "Отвечают люди, а не боты") { go("/messages/support") }
+                    SettingsRow(icon: "headphones", color: Tint.sky, title: "Поддержка", sub: "Отвечают люди, а не боты") { go("/messages/support") }
                     SettingsRow(icon: "questionmark", color: Tint.sky, title: "Помощь и безопасность") { go("/page/help") }
                     SettingsRow(icon: "doc.text", color: Tint.gray, title: "Правила и документы", last: true) { go("/page/rules") }
                 }
+                if app.me != nil {
+                    HStack(spacing: 8) {
+                        pill("Сменить аккаунт", "arrow.left.arrow.right", T.text) { then { app.accountsOpen = true } }
+                        pill("Выйти", "rectangle.portrait.and.arrow.right", T.danger) { then { app.askLogout = true } }
+                    }
+                }
+                Text("Торгана \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "") (\(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""))")
+                    .font(.on(12)).foregroundStyle(T.faint).frame(maxWidth: .infinity).padding(.top, 4)
             }
             .padding(20)
         }
         .background(T.bg)
+        .task { if app.me?.isAdmin == true { admin = try? await API.shared.get("/api/admin/stats") } }
+    }
+
+    // Модерация — только администраторам: синяя плашка с тем, что ждёт решения.
+    private var moderation: some View {
+        let a = admin
+        let parts: [String] = [
+            (a?.pending ?? 0) > 0 ? "\(a!.pending!) на проверке" : nil,
+            (a?.reports ?? 0) > 0 ? "\(a!.reports!) \(Fmt.plural(a!.reports!, "жалоба", "жалобы", "жалоб"))" : nil,
+            (a?.support ?? 0) > 0 ? "\(a!.support!) в поддержке" : nil,
+            (a?.appeals ?? 0) > 0 ? "\(a!.appeals!) \(Fmt.plural(a!.appeals!, "апелляция", "апелляции", "апелляций"))" : nil
+        ].compactMap { $0 }
+        return Button { go("/admin") } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "checkmark.shield.fill").font(.system(size: 18, weight: .semibold)).foregroundStyle(.white)
+                    .frame(width: 40, height: 40).background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.white.opacity(0.2)))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Модерация").font(.on(16, .bold)).foregroundStyle(.white)
+                    Text(a == nil ? "Загружаем…" : parts.isEmpty ? "Всё разобрано" : parts.joined(separator: " · "))
+                        .font(.on(12.5)).foregroundStyle(.white.opacity(0.85)).lineLimit(1)
+                }
+                Spacer(minLength: 6)
+                if let t = a?.total, t > 0 {
+                    Text("\(t)").font(.on(13, .heavy)).foregroundStyle(T.accentFill)
+                        .padding(.horizontal, 8).frame(minWidth: 26, minHeight: 26).background(Capsule().fill(.white))
+                }
+            }
+            .padding(.horizontal, 14).padding(.vertical, 12)
+            .background(RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(LinearGradient(colors: [Color(hex: 0x3D67D0), Color(hex: 0x5B5CE0)], startPoint: .topLeading, endPoint: .bottomTrailing)))
+        }
+        .buttonStyle(.plain)
     }
 
     private func go(_ path: String) { dismiss(); nav.open(path: path) }

@@ -358,6 +358,7 @@ struct ChatData: Codable {
     let other: Person?
     let block: String?          // "me" — я заблокировал, "them" — меня
     let offers: [Offer]?
+    let deal: DealState?        // «Сделка состоялась?» и отметки — ChatDeal.swift
     let readUpTo: Int?
     let typing: Bool?
     let messages: [Message]

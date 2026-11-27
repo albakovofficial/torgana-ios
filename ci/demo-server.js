@@ -84,7 +84,7 @@ http.createServer((req, res) => {
   m = /^\/api\/conversations\/(\d+)$/.exec(p);
   if (m) {
     const after = Number(u.searchParams.get('after') || 0);
-    return json(res, { conversation: { id: 1, role: 'buyer' }, listing: { id: 2, title: items[1].title, price: items[1].price, priceUnit: '', status: 'active', bargain: true, photo: items[1].photo, city: 'Москва' },
+    return json(res, { conversation: { id: 1, role: 'buyer' }, deal: { role: 'buyer', mine: '', other: true, confirmed: false, ready: true, praised: false, tags: ['Всё как на фото', 'Быстро отвечает', 'Честный торг'], reasons: ['Товар не как на фото', 'Другое'], issue: null, canIssue: true }, listing: { id: 2, title: items[1].title, price: items[1].price, priceUnit: '', status: 'active', bargain: true, photo: items[1].photo, city: 'Москва' },
       other: { id: 2, name: 'Анна Смирнова', avatar: null }, block: null, offers: [{ id: 1, price: 85000, listingPrice: 89990, status: 'pending', bySeller: false, parentId: null, createdAt: now - 1.5 * H }],
       readUpTo: 3, typing: true, messages: msgs.filter((x) => x.id > after) });
   }

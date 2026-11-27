@@ -86,6 +86,7 @@ struct ChatView: View {
                     }
                 }
             }
+            if let d = chat.deal, chat.convId != nil { DealBar(deal: d) { what, body in await chat.dealAction(what, body) } }
             composer
         }
         .background(T.bg.ignoresSafeArea())
@@ -174,11 +175,10 @@ struct ChatView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityHint("Репутация собеседника")
-                    if let o, let id = chat.convId {
+                    if let o, chat.convId != nil {
                         Menu {
                             Button { nav.push(.user(o.id)) } label: { Label("Профиль собеседника", systemImage: "person") }
                             if let l = chat.data?.listing { Button { nav.push(.listing(l.id)) } label: { Label("Объявление", systemImage: "doc.text") } }
-                            Button { nav.push(.web("/messages/\(id)")) } label: { Label("Сделка и отзыв", systemImage: "hand.thumbsup") }
                             Button(role: chat.data?.block == "me" ? nil : .destructive) { confirmBlock = true } label: {
                                 Label(chat.data?.block == "me" ? "Разблокировать" : "Заблокировать", systemImage: "hand.raised")
                             }

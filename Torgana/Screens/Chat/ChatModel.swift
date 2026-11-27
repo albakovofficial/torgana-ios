@@ -9,6 +9,7 @@ final class ChatModel: ObservableObject {
     @Published private(set) var data: ChatData?
     @Published private(set) var messages: [Message] = []
     @Published private(set) var offers: [Offer] = []
+    @Published private(set) var deal: DealState?
     @Published private(set) var readUpTo = 0
     @Published private(set) var typing = false
     @Published private(set) var error: String?
@@ -39,6 +40,7 @@ final class ChatModel: ObservableObject {
                 for e in r.edited ?? [] { apply(e.id, body: e.body, editedAt: e.editedAt) }
                 if let n = r.now { editsSince = n }
                 offers = r.offers ?? offers
+                deal = r.deal ?? deal
                 readUpTo = r.readUpTo ?? readUpTo
                 typing = r.typing ?? false
             case .support:
@@ -48,6 +50,19 @@ final class ChatModel: ObservableObject {
             error = nil
         } catch {
             if messages.isEmpty { self.error = error.userMessage() }
+        }
+    }
+
+    /// Сделка: deal (да/нет), praise (метки), issue (жалоба модератору). Ответ — новое состояние сделки.
+    func dealAction(_ what: String, _ body: [String: JSONValue]) async -> Bool {
+        guard let id = convId else { return false }
+        do {
+            let r: DealResult = try await API.shared.post("/api/conversations/\(id)/\(what)", body)
+            if let d = r.deal { deal = d }
+            return true
+        } catch {
+            AppState.shared.show(error.userMessage(), bad: true)
+            return false
         }
     }
 
